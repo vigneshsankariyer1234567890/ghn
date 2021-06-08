@@ -19,6 +19,7 @@ import { Like } from "./entities/Like";
 import { createUserLoader } from "./utils/createUserLoader";
 import { createLikesLoader } from "./utils/createLikesLoader";
 import path from "path";
+import expressPlayground from "graphql-playground-middleware-express";
 
 const main = async () => {
   const conn = await createConnection({
@@ -84,6 +85,8 @@ const main = async () => {
       likeLoader: createLikesLoader(),
     }),
   });
+
+  app.get("/playground", expressPlayground({ endpoint: "/graphql" }));
 
   apolloServer.applyMiddleware({
     app,
