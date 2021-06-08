@@ -83,7 +83,8 @@ const main = async () => {
       userLoader: createUserLoader(),
       likeLoader: createLikesLoader(),
     }),
-    playground: true
+    playground: true,
+    introspection: true
   });
 
 
