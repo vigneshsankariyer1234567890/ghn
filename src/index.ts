@@ -25,12 +25,12 @@ const main = async () => {
     type: "postgres",
     url: process.env.DATABASE_URL,
     logging: true,
-    synchronize: true,
+    // synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
     entities: [Post, User, Like],
   });
 
-  //await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
+  await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
   // await Like.delete({});
   // await conn.createQueryBuilder()
   //           .update(Post)
