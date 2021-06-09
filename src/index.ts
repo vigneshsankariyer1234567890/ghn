@@ -25,12 +25,12 @@ const main = async () => {
     type: "postgres",
     url: process.env.DATABASE_URL,
     logging: true,
-    // synchronize: true,
+    synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
     entities: [Post, User, Like],
   });
 
-  await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
+  //await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
 
   const app = express();
 
@@ -41,11 +41,13 @@ const main = async () => {
 
   app.use(
     cors({
-      origin: [
+      origin: 
+      [
         "http://119.74.239.145",
         "http://116.87.51.173",
         "https://givehub-next-client.vercel.app",
         "http://localhost:3000",
+        "http://localhost:4000"
       ],
       credentials: true,
     })
@@ -63,7 +65,7 @@ const main = async () => {
         httpOnly: true,
         secure: __prod__,
         sameSite: "lax",
-        domain: __prod__ ? ".ghserver.com" : undefined,
+        domain: __prod__ ? ".givehub.club" : undefined,
       },
       saveUninitialized: false,
       secret: process.env.SESSION_SECRET,
