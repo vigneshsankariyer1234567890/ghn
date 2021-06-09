@@ -69,7 +69,7 @@ export class PostResolver {
   ) {
     const { userId } = req.session;
 
-    const like = await Like.findOne({ where: { postId, userId } });
+    const like = await Like.findOne({ where: { postId, userId, auditstat:true } });
 
     // user has liked post before and unliking the post
     if (like) {
@@ -77,18 +77,18 @@ export class PostResolver {
         //to change later to auditStat = 10
         await tm.query(
           `
-                update like l
-                set l.auditstat = false
-                where l.userId = $1 and l.postId = $2
+                update "like" 
+                set auditstat = false
+                where id = $1
             `,
-          [userId, postId]
+          [like.id]
         );
 
         await tm.query(
           `
-                update post p
-                set p.likeNumber = p.likeNumber - 1
-                where p.id = $1
+                update post 
+                set "likeNumber" = "likeNumber" - 1
+                where id = $1
             `,
           [postId]
         );
@@ -98,23 +98,23 @@ export class PostResolver {
       await getConnection().transaction(async (tm) => {
         await tm.query(
           `
-                insert into like ("userId", "postId", "auditstat")
-                values ($1, $2, true)
-            `,
-          [userId, postId]
+            insert into "like" ("userId", "postId", auditstat)
+            values ($1, $2, $3)
+          `,
+          [userId, postId, true]
         );
 
         await tm.query(
           `
-                update post p 
-                set p.likeNumber = p.likeNumber + 1
-                where p.id = $1
+                update post 
+                set "likeNumber" = "likeNumber" + 1
+                where id = $1
             `,
           [postId]
         );
       });
     }
-    return true;
+    return (like) ? false : true;
   }
 
   @Query(() => PaginatedPosts)

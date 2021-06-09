@@ -31,6 +31,13 @@ const main = async () => {
   });
 
   //await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
+  // await Like.delete({});
+  // await conn.createQueryBuilder()
+  //           .update(Post)
+  //           .set({likeNumber: 0})
+  //           .where("id = :id", { id: 6})
+  //           .execute();
+            
 
   const app = express();
 
