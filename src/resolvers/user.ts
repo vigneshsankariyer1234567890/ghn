@@ -18,9 +18,11 @@ import { validateRegister } from "../utils/validateRegister";
 import { sendEmail } from "../utils/sendEmail";
 import { v4 } from "uuid";
 import { getConnection } from "typeorm";
+import { Category } from "../entities/Category";
+import { Usercategory } from "../entities/Usercategory";
 
 @ObjectType()
-class FieldError {
+export class FieldError {
   @Field()
   field: string;
   @Field()
@@ -48,6 +50,26 @@ export class UserResolver {
     // current user wants to see someone elses email
     return "";
   }
+
+  @FieldResolver( () => [Category] )
+    async categories(
+        @Root() user: User,
+        @Ctx() {categoryLoader}: MyContext
+    ) {
+        // n+1 problem, n posts, n sql queries executed
+        // return User.findOne(post.creatorId);
+
+        // using dataloader
+        const usercategories = await Usercategory.findByIds([user.id]);
+
+        if (usercategories.length < 1) {
+          return [];
+        }
+
+        const catids = usercategories.map(uc => uc.categoryId);
+        
+        return await categoryLoader.loadMany(catids);
+    };
 
   @Query(() => User, { nullable: true })
   me(@Ctx() { req }: MyContext) {

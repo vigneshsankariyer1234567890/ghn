@@ -1,4 +1,4 @@
-import { Entity, BaseEntity, ManyToOne, PrimaryColumn, Column } from "typeorm";
+import { Entity, BaseEntity, ManyToOne, PrimaryColumn, Column, PrimaryGeneratedColumn } from "typeorm";
 import { User } from "./User";
 import { Post } from "./Post";
 
@@ -10,6 +10,10 @@ import { Post } from "./Post";
 
 @Entity()
 export class Like extends BaseEntity {
+
+  
+  @PrimaryGeneratedColumn()
+  id!: number
 
   @PrimaryColumn()
   userId: number;
@@ -25,7 +29,7 @@ export class Like extends BaseEntity {
   })
   post: Post;
 
-  @Column()
-  auditstat: boolean;
+  @Column({type: "boolean", default:true})
+  auditstat!: boolean;
   
 }

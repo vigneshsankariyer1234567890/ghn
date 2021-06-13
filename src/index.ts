@@ -19,6 +19,10 @@ import { Like } from "./entities/Like";
 import { createUserLoader } from "./utils/createUserLoader";
 import { createLikesLoader } from "./utils/createLikesLoader";
 import path from "path";
+import { Usercategory } from "./entities/Usercategory";
+import { Category } from "./entities/Category";
+import { CategoryResolver } from "./resolvers/category";
+import { createCategoryLoader } from "./utils/createInterestsLoader";
 
 const main = async () => {
   const conn = await createConnection({
@@ -27,14 +31,22 @@ const main = async () => {
     logging: true,
     synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
-    entities: [Post, User, Like],
+    entities: [Post, User, Like, Usercategory, Category],
   });
 
-  //await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
+  // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
+  // await Like.delete({});
+  // await conn.createQueryBuilder()
+  //           .update(Post)
+  //           .set({likeNumber: 0})
+  //           .where("id = :id", { id: 6})
+  //           .execute();
+            
 
   const app = express();
 
-  const RedisStore = connectRedis(session);
+  const RedisStore = connectRedis(session); 
+
   const redis = new Redis(process.env.REDIS_URL);
 
   app.set("proxy", 1);
@@ -75,7 +87,7 @@ const main = async () => {
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
-      resolvers: [HelloResolver, PostResolver, UserResolver],
+      resolvers: [HelloResolver, PostResolver, UserResolver, CategoryResolver],
       validate: false,
     }),
     context: ({ req, res }): MyContext => ({
@@ -84,6 +96,7 @@ const main = async () => {
       redis,
       userLoader: createUserLoader(),
       likeLoader: createLikesLoader(),
+      categoryLoader: createCategoryLoader()
     }),
     playground: true,
     introspection: true

@@ -1,6 +1,7 @@
 import {Request, Response} from 'express'
 import { Session, SessionData } from "express-session";
 import { Redis } from 'ioredis'
+import { createCategoryLoader } from './utils/createInterestsLoader';
 import { createLikesLoader } from './utils/createLikesLoader';
 import { createUserLoader } from './utils/createUserLoader';
 
@@ -10,4 +11,5 @@ export type MyContext = {
   res: Response;
   userLoader: ReturnType<typeof createUserLoader>;
   likeLoader: ReturnType<typeof createLikesLoader>;
+  categoryLoader: ReturnType<typeof createCategoryLoader>;
 };
