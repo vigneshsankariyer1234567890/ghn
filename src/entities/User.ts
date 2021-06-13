@@ -10,6 +10,7 @@ import {
 } from "typeorm";
 import { Post } from "./Post";
 import { Like } from "./Like";
+import { Usercategory } from "./Usercategory";
 
 @ObjectType()
 @Entity()
@@ -34,6 +35,9 @@ export class User extends BaseEntity {
 
   @OneToMany(() => Like, (like) => like.user)
   likes: Like[];
+
+  @OneToMany(() => Usercategory, (uc) => uc.user)
+  usercategories: Usercategory[];
 
   @Field(() => String)
   @CreateDateColumn()
