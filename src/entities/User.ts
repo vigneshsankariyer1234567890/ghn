@@ -11,6 +11,8 @@ import {
 import { Post } from "./Post";
 import { Like } from "./Like";
 import { Usercategory } from "./Usercategory";
+import { Charity } from "./Charity";
+import { Charityrolelink } from "./Charityrolelink"
 
 @ObjectType()
 @Entity()
@@ -38,6 +40,12 @@ export class User extends BaseEntity {
 
   @OneToMany(() => Usercategory, (uc) => uc.user)
   usercategories: Usercategory[];
+
+  @OneToMany(() => Charity, char => char.charitycreator)
+  charitycreator: Charity[];
+
+  @OneToMany(() => Charityrolelink, crl => crl.user)
+  charityRoleLinks: Charityrolelink[]
 
   @Field(() => String)
   @CreateDateColumn()
