@@ -3,7 +3,6 @@ import { BaseEntity, Column, CreateDateColumn, Entity, ManyToOne, OneToMany, Pri
 import { Charitycategory } from "./Charitycategory";
 import { Charityrolelink } from "./Charityrolelink";
 import { User } from "./User";
-//import { Category } from "./Category";
 
 @ObjectType()
 @Entity()
@@ -25,20 +24,18 @@ export class Charity extends BaseEntity {
   @Column()
   physicalAddress!: string;
 
+  @Field()
   @Column()
-  charitycreatorId: number;
+  postalcode!: string;
+
+  @Column()
+  charitycreatorId!: number;
 
   @Field(() => User)
   @ManyToOne(() => User, user => user.charitycreator)
   charitycreator: User;
 
-  @Field()
-  @Column()
-  categoryId: number;
-
-  // @Field(() => Category)
-  // @ManyToOne(() => Category, cat => cat.charities)
-  // category: Category;
+  
 
   @OneToMany(() => Charityrolelink, crl => crl.charity)
   charityRoleLinks: Charityrolelink[]

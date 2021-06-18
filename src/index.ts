@@ -23,24 +23,31 @@ import { Usercategory } from "./entities/Usercategory";
 import { Category } from "./entities/Category";
 import { CategoryResolver } from "./resolvers/category";
 import { createCategoryLoader } from "./utils/createInterestsLoader";
+import { Charity } from "./entities/Charity";
+import { Charitycategory } from "./entities/Charitycategory";
+import { Charityrolelink } from "./entities/Charityrolelink";
+import { Userrole } from "./entities/Userrole";
+import { CharityResolver } from "./resolvers/charity";
 
 const main = async () => {
   const conn = await createConnection({
     type: "postgres",
     url: process.env.DATABASE_URL,
     logging: true,
-    //synchronize: true,
+    synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
-    entities: [Post, User, Like, Usercategory, Category],
+    entities: [Post, User, Like, Usercategory, Category, Charity, Charitycategory, Charityrolelink, Userrole],
   });
 
-  await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
+  //await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
   // await Like.delete({});
   // await conn.createQueryBuilder()
   //           .update(Post)
   //           .set({likeNumber: 0})
   //           .where("id = :id", { id: 6})
   //           .execute();
+  // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('ADMIN')`);
+  // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('VOLUNTEER')`);
             
 
   const app = express();
@@ -87,7 +94,7 @@ const main = async () => {
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
-      resolvers: [HelloResolver, PostResolver, UserResolver, CategoryResolver],
+      resolvers: [HelloResolver, PostResolver, UserResolver, CategoryResolver, CharityResolver],
       validate: false,
     }),
     context: ({ req, res }): MyContext => ({
