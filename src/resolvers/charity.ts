@@ -2,11 +2,14 @@ import {
   Arg,
   Ctx,
   Field,
+  FieldResolver,
   InputType,
+  Int,
   Mutation,
   ObjectType,
   Query,
   Resolver,
+  Root,
   UseMiddleware,
 } from "type-graphql";
 import axios from "axios";
@@ -17,6 +20,7 @@ import { MyContext } from "../types";
 import { UENData } from "../utils/UENData";
 import { getConnection } from "typeorm";
 import { Charityrolelink } from "../entities/Charityrolelink";
+import { User } from "../entities/User";
 
 @ObjectType()
 class UENResponse {
@@ -53,6 +57,16 @@ export class CharityDataInput {
 
 @Resolver()
 export class CharityResolver {
+  @FieldResolver(() => User)
+  charitycreator(@Root() charity: Charity, @Ctx() { userLoader }: MyContext) {
+    return userLoader.load(charity.charitycreatorId);
+  }
+
+  @Query(() => Charity, { nullable: true })
+  charity(@Arg("id", () => Int) id: number): Promise<Charity | undefined> {
+    return Charity.findOne(id);
+  }
+
   @UseMiddleware(isAuth)
   @Query(() => UENResponse)
   async checkUENNumber(
@@ -110,8 +124,6 @@ export class CharityResolver {
           res.data.result.records[0].entity_type === "CC"
       );
 
-    console.log(res);
-
     if (!res) {
       return {
         errors: [
@@ -168,16 +180,14 @@ export class CharityResolver {
         .execute();
       charity = result.raw[0];
       await getConnection()
-            .createQueryBuilder()
-            .insert()
-            .into(Charityrolelink)
-            .values(
-                {
-                    userId: req.session.userId,
-                    userroleId: 0,
-                    charityId: charity.id
-                }
-            );
+        .createQueryBuilder()
+        .insert()
+        .into(Charityrolelink)
+        .values({
+          userId: req.session.userId,
+          userroleId: 0,
+          charityId: charity.id,
+        });
     } catch (err) {
       //|| err.detail.includes("already exists")) {
       // duplicate username error
