@@ -29,6 +29,9 @@ export class Charityrolelink extends BaseEntity {
     @ManyToOne(() => Charity, (charity) => charity.charityRoleLinks )
     charity!: Charity
 
+    @Column({type: "boolean", default:true})
+    auditstat!: boolean;
+
     @Field(() => String)
     @CreateDateColumn()
     createdAt: Date;

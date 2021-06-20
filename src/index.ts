@@ -39,7 +39,7 @@ const main = async () => {
     entities: [Post, User, Like, Usercategory, Category, Charity, Charitycategory, Charityrolelink, Userrole],
   });
 
-  //await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
+  // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
   // await Like.delete({});
   // await conn.createQueryBuilder()
   //           .update(Post)
@@ -64,7 +64,7 @@ const main = async () => {
       [
         "http://119.74.239.145",
         "http://116.87.51.173",
-        "https://givehub-next-client.vercel.app",
+        "https://givehub.vercel.app",
         "http://localhost:3000",
         "http://localhost:4000"
       ],

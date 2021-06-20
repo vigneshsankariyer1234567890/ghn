@@ -55,7 +55,7 @@ export class CharityDataInput {
   postalcode!: string;
 }
 
-@Resolver()
+@Resolver(Charity)
 export class CharityResolver {
   @FieldResolver(() => User)
   charitycreator(@Root() charity: Charity, @Ctx() { userLoader }: MyContext) {
