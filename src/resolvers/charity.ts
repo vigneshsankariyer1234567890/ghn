@@ -21,6 +21,8 @@ import { UENData } from "../utils/UENData";
 import { getConnection } from "typeorm";
 import { Charityrolelink } from "../entities/Charityrolelink";
 import { User } from "../entities/User";
+import { Category } from "../entities/Category";
+import { Charitycategory } from "../entities/Charitycategory";
 
 @ObjectType()
 class UENResponse {
@@ -43,6 +45,14 @@ class CharityResponse {
   charity?: Charity;
 }
 
+@ObjectType()
+class PaginatedCharities {
+  @Field(() => [Charity])
+  charities: Charity[];
+  @Field()
+  hasMore: boolean;
+}
+
 @InputType()
 export class CharityDataInput {
   @Field()
@@ -62,9 +72,29 @@ export class CharityResolver {
     return userLoader.load(charity.charitycreatorId);
   }
 
+  @FieldResolver( () => [Category] )
+    async categories(
+        @Root() charity: Charity,
+        @Ctx() {categoryLoader}: MyContext
+    ) {
+        // n+1 problem, n posts, n sql queries executed
+        // return User.findOne(post.creatorId);
+
+        // using dataloader
+        const charitycategories = await Charitycategory.find({where: {charityId: charity.id}});
+
+        if (charitycategories.length < 1) {
+          return [];
+        }
+        
+        const catids = charitycategories.map(cc => cc.categoryId);
+        
+        return await categoryLoader.loadMany(catids);
+    };
+
   @Query(() => Charity, { nullable: true })
-  charity(@Arg("id", () => Int) id: number): Promise<Charity | undefined> {
-    return Charity.findOne(id);
+  charity(@Arg("uen", () => String) uen: string): Promise<Charity | undefined> {
+    return Charity.findOne({where: {uen: uen}});
   }
 
   @UseMiddleware(isAuth)
@@ -185,9 +215,10 @@ export class CharityResolver {
         .into(Charityrolelink)
         .values({
           userId: req.session.userId,
-          userroleId: 0,
+          userroleId: 1,
           charityId: charity.id,
-        });
+        })
+        .execute();
     } catch (err) {
       //|| err.detail.includes("already exists")) {
       // duplicate username error
@@ -204,4 +235,67 @@ export class CharityResolver {
     }
     return { charity };
   }
+
+  @Query(() => PaginatedCharities)
+  async searchCharitiesByCategories(
+    @Arg("limit", () => Int) limit: number,
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
+    @Arg("categories", () => [Number], { nullable:true }) categories: [number] | null
+  ): Promise<PaginatedCharities>{
+    const realLimit = Math.min(50, limit);
+    const realLimitPlusOne = realLimit + 1;
+
+    const replacements: any[] = [realLimitPlusOne];
+
+    if (categories) {
+      const catcsv = categories.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1);
+      replacements.push(catcsv);
+
+      if (cursor) {
+        replacements.push(new Date(parseInt(cursor))); //cursor null at first
+      }
+
+      //actual query
+      const chars = await getConnection().query(`
+        SELECT DISTINCT char.* 
+        FROM charitycategory cc
+        INNER JOIN 
+        (SELECT id FROM unnest(string_to_array( $2, ',')::int[]) AS id
+        ) cat
+        ON cat.id = cc."categoryId"
+        FULL JOIN charity char ON char.id = cc."charityId"
+        WHERE cc.auditstat = TRUE
+        ${cursor ? `AND char."createdAt" < $3`: ""}
+        ORDER BY char."createdAt" DESC
+        limit $1;
+        `, replacements);
+
+      return {
+        charities: chars.slice(0,realLimit),
+        hasMore: chars.length === realLimitPlusOne
+      };
+    }
+
+    if (cursor) {
+      replacements.push(new Date(parseInt(cursor))); //cursor null at first
+    }
+
+    const chars = await getConnection().query(`
+
+    SELECT char.* 
+    FROM charity char
+    ${cursor ? `where char."createdAt" < $2` : ""}
+    order by char."createdAt" DESC
+    limit $1
+    `, 
+      replacements
+    );
+
+    return {
+      charities: chars.slice(0, realLimit),
+      hasMore: chars.length === realLimitPlusOne
+    };
+  }
+
+  
 }

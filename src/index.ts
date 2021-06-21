@@ -40,7 +40,7 @@ const main = async () => {
   });
 
   // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
-  // await Like.delete({});
+  // await Charity.delete({});
   // await conn.createQueryBuilder()
   //           .update(Post)
   //           .set({likeNumber: 0})
@@ -48,6 +48,7 @@ const main = async () => {
   //           .execute();
   // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('ADMIN')`);
   // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('VOLUNTEER')`);
+  // console.log(await Userrole.find()); // remember that primary key generation starts from 1
             
 
   const app = express();

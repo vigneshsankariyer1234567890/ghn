@@ -14,19 +14,25 @@ export class Charityrolelink extends BaseEntity {
     @Column()
     userId!: number
 
-    @ManyToOne(() => User, (user) => user.charityRoleLinks)
+    @ManyToOne(() => User, (user) => user.charityRoleLinks, {
+        onDelete: "CASCADE",
+      })
     user: User;
 
     @Column()
     userroleId!: number
 
-    @ManyToOne(() => Userrole, (userrole) => userrole.charityRoleLinks )
+    @ManyToOne(() => Userrole, (userrole) => userrole.charityRoleLinks , {
+        onDelete: "CASCADE",
+      })
     userrole: Userrole
 
     @Column()
     charityId!: number
 
-    @ManyToOne(() => Charity, (charity) => charity.charityRoleLinks )
+    @ManyToOne(() => Charity, (charity) => charity.charityRoleLinks , {
+        onDelete: "CASCADE",
+      })
     charity!: Charity
 
     @Column({type: "boolean", default:true})

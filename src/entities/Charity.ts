@@ -8,7 +8,7 @@ import { User } from "./User";
 @Entity()
 export class Charity extends BaseEntity {
 
-  
+  @Field()
   @PrimaryGeneratedColumn()
   id!: number;
 
@@ -32,7 +32,9 @@ export class Charity extends BaseEntity {
   charitycreatorId!: number;
 
   @Field(() => User)
-  @ManyToOne(() => User, user => user.charitycreator)
+  @ManyToOne(() => User, user => user.charitycreator, {
+    onDelete: "CASCADE",
+  })
   charitycreator: User;
 
   

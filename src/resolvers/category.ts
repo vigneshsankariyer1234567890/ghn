@@ -5,6 +5,9 @@ import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
 import { FieldError } from "./user";
 import { Usercategory } from "../entities/Usercategory";
+import { Charity } from "../entities/Charity";
+import { validateCharityAdmin } from "../utils/validateCharityAdmin";
+import { Charitycategory } from "../entities/Charitycategory";
 
 @InputType()
 class CategoryInput {
@@ -76,6 +79,88 @@ export class CategoryResolver {
                     insert into usercategory ("userId", "categoryId")
                     values ($1, $2)
                 `, [userId, category])
+            })
+        });
+        
+        return {success: true};
+    }
+
+    @UseMiddleware(isAuth)
+    @Mutation(() => CategoryResponse)
+    async updateCharityCategories(
+        @Arg('categories', () => CategoryInput) categories: CategoryInput,
+        @Arg('uen', () => String) uen:string,
+        @Ctx() {req}: MyContext
+    ): Promise<CategoryResponse> {
+        
+        if (!req.session.userId) {
+            return {
+                errors: [
+                    {
+                        field: "User",
+                        message: "User is not authenticated."
+                    }
+                ],
+                success: false
+            }
+        }
+
+        const errors = await validateCharityAdmin({uen:uen, userid:req.session.userId});
+
+        if (errors) {
+            return {
+                errors,
+                success: false
+            }
+        }
+
+        const catarr = categories.categories;
+
+        if (catarr.length < 1) {
+            return {
+                errors: [
+                    {  
+                        field: "Interests", 
+                        message: "Please select at least one interest."  
+                    }],
+                success: false
+            };
+        }
+
+        const charity = await Charity.findOne({where: {uen:uen}});
+
+        if (!charity) {
+            return {
+                errors: [
+                    {  
+                        field: "Charity", 
+                        message: "That charity does not exist."  
+                    }],
+                success: false
+            }; 
+        }
+
+        const uc = await Charitycategory.find({where: {charityId:charity.id, auditstat:true}});
+
+        if (uc.length>0) {
+            // updates to false
+            await getConnection().transaction( async tm => {
+            await tm.query(`
+                update charitycategory
+                set auditstat = false
+                where "charityId" = $1
+            `, [charity.id])
+            });
+
+        }
+            
+        // insert back 
+        catarr.forEach(async category => {
+            await getConnection().transaction( async tm => {
+                await tm.query(`
+                    insert into charitycategory ("charityId", "categoryId")
+                    values ($1, $2)
+                `, [charity.id, category])
             })
         });
         

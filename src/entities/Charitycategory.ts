@@ -18,13 +18,17 @@ export class Charitycategory extends BaseEntity {
   @Column()
   charityId: number;
   
-  @ManyToOne(() => Charity, charity => charity.charitycategories)
+  @ManyToOne(() => Charity, charity => charity.charitycategories, {
+    onDelete: "CASCADE",
+  })
   charity: Charity;
  
   @Column()
   categoryId: number;
   
-  @ManyToOne(() => Category, cat => cat.categories)
+  @ManyToOne(() => Category, cat => cat.categories, {
+    onDelete: "CASCADE",
+  })
   category: Category;
  
   @Column({type: "boolean", default:true})

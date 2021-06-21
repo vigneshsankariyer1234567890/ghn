@@ -18,13 +18,17 @@ export class Usercategory extends BaseEntity {
   @Column()
   userId: number;
   
-  @ManyToOne(() => User, user => user.usercategories)
+  @ManyToOne(() => User, user => user.usercategories, {
+    onDelete: "CASCADE",
+  })
   user: User;
  
   @Column()
   categoryId: number;
   
-  @ManyToOne(() => Category, cat => cat.categories)
+  @ManyToOne(() => Category, cat => cat.categories, {
+    onDelete: "CASCADE",
+  })
   category: Category;
  
   @Column({type: "boolean", default:true})
