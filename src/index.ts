@@ -23,6 +23,11 @@ import { Usercategory } from "./entities/Usercategory";
 import { Category } from "./entities/Category";
 import { CategoryResolver } from "./resolvers/category";
 import { createCategoryLoader } from "./utils/createInterestsLoader";
+import { Charity } from "./entities/Charity";
+import { Charitycategory } from "./entities/Charitycategory";
+import { Charityrolelink } from "./entities/Charityrolelink";
+import { Userrole } from "./entities/Userrole";
+import { CharityResolver } from "./resolvers/charity";
 
 const main = async () => {
   const conn = await createConnection({
@@ -31,16 +36,19 @@ const main = async () => {
     logging: true,
     synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
-    entities: [Post, User, Like, Usercategory, Category],
+    entities: [Post, User, Like, Usercategory, Category, Charity, Charitycategory, Charityrolelink, Userrole],
   });
 
   // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
-  // await Like.delete({});
+  // await Charity.delete({});
   // await conn.createQueryBuilder()
   //           .update(Post)
   //           .set({likeNumber: 0})
   //           .where("id = :id", { id: 6})
   //           .execute();
+  // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('ADMIN')`);
+  // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('VOLUNTEER')`);
+  // console.log(await Userrole.find()); // remember that primary key generation starts from 1
             
 
   const app = express();
@@ -49,7 +57,7 @@ const main = async () => {
 
   const redis = new Redis(process.env.REDIS_URL);
 
-  app.set("proxy", 1);
+  app.set("trust proxy", 1);
 
   app.use(
     cors({
@@ -57,7 +65,7 @@ const main = async () => {
       [
         "http://119.74.239.145",
         "http://116.87.51.173",
-        "https://givehub-next-client.vercel.app",
+        "https://givehub.vercel.app",
         "http://localhost:3000",
         "http://localhost:4000"
       ],
@@ -76,7 +84,7 @@ const main = async () => {
         maxAge: 1000 * 60 * 60 * 24 * 365, //1 year
         httpOnly: true,
         secure: __prod__,
-        sameSite: "lax",
+        sameSite: "none",
         domain: __prod__ ? ".givehub.club" : undefined,
       },
       saveUninitialized: false,
@@ -87,7 +95,7 @@ const main = async () => {
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
-      resolvers: [HelloResolver, PostResolver, UserResolver, CategoryResolver],
+      resolvers: [HelloResolver, PostResolver, UserResolver, CategoryResolver, CharityResolver],
       validate: false,
     }),
     context: ({ req, res }): MyContext => ({

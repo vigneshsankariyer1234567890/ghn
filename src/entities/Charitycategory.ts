@@ -1,7 +1,7 @@
 import { ObjectType } from "type-graphql";
 import { BaseEntity, Entity, ManyToOne, Column, PrimaryGeneratedColumn } from "typeorm";
 import { Category } from "./Category";
-import { User } from "./User";
+import { Charity } from "./Charity";
 
 // m to n, many to many
 // user <-> posts (user can like many posts, posts can be liked by many people)
@@ -9,19 +9,19 @@ import { User } from "./User";
 
 @ObjectType()
 @Entity()
-export class Usercategory extends BaseEntity {
+export class Charitycategory extends BaseEntity {
 
   
   @PrimaryGeneratedColumn()
   id!: number
   
   @Column()
-  userId: number;
+  charityId: number;
   
-  @ManyToOne(() => User, user => user.usercategories, {
+  @ManyToOne(() => Charity, charity => charity.charitycategories, {
     onDelete: "CASCADE",
   })
-  user: User;
+  charity: Charity;
  
   @Column()
   categoryId: number;

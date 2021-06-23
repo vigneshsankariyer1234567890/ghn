@@ -1,6 +1,6 @@
 import {MigrationInterface, QueryRunner} from "typeorm";
 
-export class CategoryData1623243570117 implements MigrationInterface {
+export class InsertCategoryData1623642745102 implements MigrationInterface {
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`INSERT INTO "category" ("name") VALUES ('Animal Welfare') `);
@@ -19,6 +19,8 @@ export class CategoryData1623243570117 implements MigrationInterface {
         await queryRunner.query(`INSERT INTO "category" ("name") VALUES ('Women & Girls') `);
     }
 
-    public async down(_: QueryRunner): Promise<void> {}
+    public async down(_: QueryRunner): Promise<void> {
+        
+    }
 
 }
