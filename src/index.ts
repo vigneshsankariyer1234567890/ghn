@@ -28,6 +28,11 @@ import { Charitycategory } from "./entities/Charitycategory";
 import { Charityrolelink } from "./entities/Charityrolelink";
 import { Userrole } from "./entities/Userrole";
 import { CharityResolver } from "./resolvers/charity";
+import { Event } from "./entities/Event";
+import { Posteventlink } from "./entities/Posteventlink";
+import { Eventvolunteer } from "./entities/Eventvolunteer";
+import { Task } from "./entities/Task";
+import { Taskvolunteer } from "./entities/Taskvolunteer";
 
 const main = async () => {
   const conn = await createConnection({
@@ -36,7 +41,9 @@ const main = async () => {
     logging: true,
     synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
-    entities: [Post, User, Like, Usercategory, Category, Charity, Charitycategory, Charityrolelink, Userrole],
+    entities: [Post, User, Like, Usercategory, Category, Charity
+      , Charitycategory, Charityrolelink, Userrole, Event, Posteventlink, Eventvolunteer, Task
+      , Taskvolunteer],
   });
 
   // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
@@ -49,6 +56,7 @@ const main = async () => {
   // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('ADMIN')`);
   // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('VOLUNTEER')`);
   // console.log(await Userrole.find()); // remember that primary key generation starts from 1
+  // console.log(await Category.find());
             
 
   const app = express();

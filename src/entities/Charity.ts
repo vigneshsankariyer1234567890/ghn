@@ -2,6 +2,7 @@ import { Field, ObjectType } from "type-graphql";
 import { BaseEntity, Column, CreateDateColumn, Entity, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { Charitycategory } from "./Charitycategory";
 import { Charityrolelink } from "./Charityrolelink";
+import { Event } from "./Event";
 import { User } from "./User";
 
 @ObjectType()
@@ -37,13 +38,14 @@ export class Charity extends BaseEntity {
   })
   charitycreator: User;
 
-  
-
   @OneToMany(() => Charityrolelink, crl => crl.charity)
   charityRoleLinks: Charityrolelink[]
 
   @OneToMany(() => Charitycategory, cc => cc.charity)
   charitycategories: Charitycategory[]
+
+  @OneToMany(() => Event, event => event.charity)
+  charityevents: Event[]
 
 
   @Field(() => String)

@@ -13,6 +13,7 @@ import { Like } from "./Like";
 import { Usercategory } from "./Usercategory";
 import { Charity } from "./Charity";
 import { Charityrolelink } from "./Charityrolelink"
+import { Eventvolunteer } from "./Eventvolunteer";
 
 @ObjectType()
 @Entity()
@@ -45,7 +46,10 @@ export class User extends BaseEntity {
   charitycreator: Charity[];
 
   @OneToMany(() => Charityrolelink, crl => crl.user)
-  charityRoleLinks: Charityrolelink[]
+  charityRoleLinks: Charityrolelink[];
+
+  @OneToMany(() => Eventvolunteer, ev => ev.user)
+  volunteerActivities: Eventvolunteer[];
 
   @Field(() => String)
   @CreateDateColumn()
