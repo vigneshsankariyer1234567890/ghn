@@ -47,6 +47,11 @@ export class Post extends BaseEntity {
   @OneToMany(() => Like, (like) => like.post)
   likes: Like[];
 
+  @Field(() => Boolean)
+  @Column({type: "boolean", default:false})
+  auditstat!: boolean;
+
+
   @Field(() => String)
   @CreateDateColumn()
   createdAt: Date;
