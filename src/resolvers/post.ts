@@ -1,12 +1,9 @@
 import {
   Arg,
   Ctx,
-  Field,
   FieldResolver,
-  InputType,
   Int,
   Mutation,
-  ObjectType,
   Query,
   Resolver,
   Root,
@@ -18,22 +15,7 @@ import { Like } from "../entities/Like";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
-
-@InputType()
-class PostInput {
-  @Field()
-  title: string;
-  @Field()
-  text: string;
-}
-
-@ObjectType()
-class PaginatedPosts {
-  @Field(() => [Post])
-  posts: Post[];
-  @Field()
-  hasMore: boolean;
-}
+import { PaginatedPosts, PostInput } from "../utils/PostInput";
 
 @Resolver(Post)
 export class PostResolver {

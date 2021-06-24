@@ -1,11 +1,10 @@
 import { Field, ObjectType } from "type-graphql";
 import { Entity, BaseEntity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany } from "typeorm";
 import { Charity } from "./Charity";
+import { Eventlike } from "./Eventlike";
 import { Eventvolunteer } from "./Eventvolunteer";
 import { Posteventlink } from "./Posteventlink";
 import { Task } from "./Task";
-
-
 
 @ObjectType()
 @Entity()
@@ -48,7 +47,9 @@ export class Event extends BaseEntity {
 
     @OneToMany(() => Task, t => t.event)
     tasks: Task[];
-    
+
+    @OneToMany(() => Eventlike, ev => ev.event)
+    likes: Eventlike[];
 
     @Field(() => String)
     @CreateDateColumn()

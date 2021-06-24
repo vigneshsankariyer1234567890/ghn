@@ -1,6 +1,6 @@
 import { Column, Entity, ManyToOne } from "typeorm";
 import { User } from "./User";
-import { Post } from "./Post";
+import { Event } from "./Event";
 import { iLike } from "./iLike";
 
 // m to n
@@ -10,19 +10,19 @@ import { iLike } from "./iLike";
 // user -> updoot <- posts
 
 @Entity()
-export class Like extends iLike {
+export class Eventlike extends iLike {
 
-  @ManyToOne(() => User, (user) => user.likes, {
+  @ManyToOne(() => User, (user) => user.eventlikes, {
     onDelete: "CASCADE",
   })
   user: User;
 
   @Column()
-  postId!: number;
+  eventId!: number;
 
-  @ManyToOne(() => Post, (post) => post.likes, {
+  @ManyToOne(() => Event, (event) => event.likes, {
     onDelete: "CASCADE",
   })
-  post: Post;
+  event: Event;
   
 }

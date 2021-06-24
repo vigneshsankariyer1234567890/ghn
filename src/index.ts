@@ -16,13 +16,13 @@ import { createConnection } from "typeorm";
 import { User } from "./entities/User";
 import { Post } from "./entities/Post";
 import { Like } from "./entities/Like";
-import { createUserLoader } from "./utils/createUserLoader";
-import { createLikesLoader } from "./utils/createLikesLoader";
+import { createUserLoader } from "./utils/dataloaders/createUserLoader";
+import { createLikesLoader } from "./utils/dataloaders/createLikesLoader";
 import path from "path";
 import { Usercategory } from "./entities/Usercategory";
 import { Category } from "./entities/Category";
 import { CategoryResolver } from "./resolvers/category";
-import { createCategoryLoader } from "./utils/createInterestsLoader";
+import { createCategoryLoader } from "./utils/dataloaders/createInterestsLoader";
 import { Charity } from "./entities/Charity";
 import { Charitycategory } from "./entities/Charitycategory";
 import { Charityrolelink } from "./entities/Charityrolelink";
@@ -33,6 +33,7 @@ import { Posteventlink } from "./entities/Posteventlink";
 import { Eventvolunteer } from "./entities/Eventvolunteer";
 import { Task } from "./entities/Task";
 import { Taskvolunteer } from "./entities/Taskvolunteer";
+import { Eventlike } from "./entities/Eventlike";
 
 const main = async () => {
   const conn = await createConnection({
@@ -43,7 +44,7 @@ const main = async () => {
     migrations: [path.join(__dirname, "./migrations/*")],
     entities: [Post, User, Like, Usercategory, Category, Charity
       , Charitycategory, Charityrolelink, Userrole, Event, Posteventlink, Eventvolunteer, Task
-      , Taskvolunteer],
+      , Taskvolunteer, Eventlike],
   });
 
   // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)

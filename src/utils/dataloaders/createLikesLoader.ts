@@ -1,4 +1,4 @@
-import { Like } from "../entities/Like";
+import { Like } from "../../entities/Like";
 import DataLoader from "dataloader";
 
 // [{postId: 5, userId: 10}]
