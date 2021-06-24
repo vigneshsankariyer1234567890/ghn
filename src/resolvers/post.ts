@@ -15,7 +15,7 @@ import { Like } from "../entities/Like";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
-import { PaginatedPosts, PostInput } from "../utils/PostInput";
+import { PaginatedPosts, PostInput } from "../utils/cardContainers/PostInput";
 
 @Resolver(Post)
 export class PostResolver {
@@ -36,7 +36,7 @@ export class PostResolver {
     }
 
     const like = await likeLoader.load({
-      postId: post.id,
+      cardId: post.id,
       userId: req.session.userId,
     });
 
@@ -45,7 +45,7 @@ export class PostResolver {
 
   @Mutation(() => Boolean)
   @UseMiddleware(isAuth)
-  async like(
+  async likePost(
     @Arg("postId", () => Int) postId: number,
     @Ctx() { req }: MyContext
   ) {
@@ -71,6 +71,7 @@ export class PostResolver {
                 update post 
                 set "likeNumber" = "likeNumber" - 1
                 where id = $1
+                and "likeNumber">0
             `,
           [postId]
         );
@@ -80,10 +81,10 @@ export class PostResolver {
       await getConnection().transaction(async (tm) => {
         await tm.query(
           `
-            insert into "like" ("userId", "postId", auditstat)
-            values ($1, $2, $3)
+            insert into "like" ("userId", "postId")
+            values ($1, $2)
           `,
-          [userId, postId, true]
+          [userId, postId]
         );
 
         await tm.query(
@@ -102,6 +103,7 @@ export class PostResolver {
   @Query(() => PaginatedPosts)
   async posts(
     @Arg("limit", () => Int) limit: number,
+    @Arg("sortByLikes") sortByLikes: boolean,
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
@@ -120,7 +122,9 @@ export class PostResolver {
     from post p 
 
     ${cursor ? `where p."createdAt" < $2` : ""}
-    order by p."createdAt" DESC
+    order by 
+      ${sortByLikes ? `p."likeNumber" DESC,` : ""}
+      p."createdAt" DESC
     limit $1
     `,
       replacements

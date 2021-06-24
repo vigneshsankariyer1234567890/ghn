@@ -34,6 +34,7 @@ import { Eventvolunteer } from "./entities/Eventvolunteer";
 import { Task } from "./entities/Task";
 import { Taskvolunteer } from "./entities/Taskvolunteer";
 import { Eventlike } from "./entities/Eventlike";
+import { createEventLikesLoader } from "./utils/dataloaders/createEventLikesLoader";
 
 const main = async () => {
   const conn = await createConnection({
@@ -113,7 +114,8 @@ const main = async () => {
       redis,
       userLoader: createUserLoader(),
       likeLoader: createLikesLoader(),
-      categoryLoader: createCategoryLoader()
+      categoryLoader: createCategoryLoader(),
+      eventLikeLoader: createEventLikesLoader()
     }),
     playground: true,
     introspection: true

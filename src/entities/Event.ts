@@ -5,6 +5,7 @@ import { Eventlike } from "./Eventlike";
 import { Eventvolunteer } from "./Eventvolunteer";
 import { Posteventlink } from "./Posteventlink";
 import { Task } from "./Task";
+import { User } from "./User";
 
 @ObjectType()
 @Entity()
@@ -39,6 +40,19 @@ export class Event extends BaseEntity {
     })
     charity: Charity;
 
+    @Column()
+    creatorId: number;
+
+    @Field(() => User)
+    @ManyToOne(() => User, user => user.createdevents, {
+        onDelete: "CASCADE"
+    })
+    creator: User
+
+    @Field()
+    @Column({ type: "int", default: 0 })
+    likeNumber!: number;
+
     @OneToMany(() => Posteventlink, pel => pel.event)
     posteventlinks: Posteventlink[];
 
@@ -58,7 +72,6 @@ export class Event extends BaseEntity {
     @Field(() => String)
     @UpdateDateColumn()
     updatedAt: Date;
-
 
 
 
