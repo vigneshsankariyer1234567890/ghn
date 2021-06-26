@@ -14,9 +14,7 @@ export class Posteventlink extends BaseEntity {
     @Column()
     eventId: number;
 
-    @ManyToOne(() => Event, event => event.posteventlinks, {
-        onDelete: "CASCADE"
-    })
+    @ManyToOne(() => Event, event => event.posteventlinks)
     event: Event
 
     @Column()

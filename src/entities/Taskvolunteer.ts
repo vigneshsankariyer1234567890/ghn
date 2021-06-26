@@ -14,18 +14,17 @@ export class Taskvolunteer extends BaseEntity {
     @Column()
     taskId: number;
 
-    @ManyToOne(() => Task, task => task.taskvolunteers, {
-        onDelete: "CASCADE"
-    })
+    @ManyToOne(() => Task, task => task.taskvolunteers)
     task: Task;
 
     @Column()
     eventvolunteerId: number;
 
-    @ManyToOne(() => Eventvolunteer, ev => ev.taskvolunteers, {
-        onDelete: "CASCADE"
-    })
+    @ManyToOne(() => Eventvolunteer, ev => ev.taskvolunteers)
     eventvolunteer: Eventvolunteer;
+
+    @Column({type: "boolean", default:true})
+    auditstat!: boolean
 
 
 

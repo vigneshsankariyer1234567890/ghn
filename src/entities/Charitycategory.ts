@@ -10,7 +10,6 @@ import { Charity } from "./Charity";
 @ObjectType()
 @Entity()
 export class Charitycategory extends BaseEntity {
-
   
   @PrimaryGeneratedColumn()
   id!: number
@@ -18,17 +17,13 @@ export class Charitycategory extends BaseEntity {
   @Column()
   charityId: number;
   
-  @ManyToOne(() => Charity, charity => charity.charitycategories, {
-    onDelete: "CASCADE",
-  })
+  @ManyToOne(() => Charity, charity => charity.charitycategories)
   charity: Charity;
  
   @Column()
   categoryId: number;
   
-  @ManyToOne(() => Category, cat => cat.categories, {
-    onDelete: "CASCADE",
-  })
+  @ManyToOne(() => Category, cat => cat.categories)
   category: Category;
  
   @Column({type: "boolean", default:true})

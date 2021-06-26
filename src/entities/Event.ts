@@ -35,18 +35,14 @@ export class Event extends BaseEntity {
     charityId: number;
 
     @Field(() => Charity)
-    @ManyToOne(() => Charity, (charity) => charity.charityevents, {
-        onDelete: "CASCADE"
-    })
+    @ManyToOne(() => Charity, (charity) => charity.charityevents)
     charity: Charity;
 
     @Column()
     creatorId: number;
 
     @Field(() => User)
-    @ManyToOne(() => User, user => user.createdevents, {
-        onDelete: "CASCADE"
-    })
+    @ManyToOne(() => User, user => user.createdevents)
     creator: User
 
     @Field()
@@ -64,6 +60,13 @@ export class Event extends BaseEntity {
 
     @OneToMany(() => Eventlike, ev => ev.event)
     likes: Eventlike[];
+
+    @Field(() => Boolean)
+    @Column({type: "boolean", default:false})
+    completed!: boolean
+
+    @Column({type: "boolean", default:true})
+    auditstat!: boolean
 
     @Field(() => String)
     @CreateDateColumn()

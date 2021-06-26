@@ -1,11 +1,30 @@
-import { Arg, Ctx, FieldResolver, Int, Mutation, Query, Resolver, Root, UseMiddleware } from "type-graphql";
+import { Arg, Ctx, Field, FieldResolver, Int, Mutation, ObjectType, Query, Resolver, Root, UseMiddleware } from "type-graphql";
 import { getConnection } from "typeorm";
+import { Charityrolelink } from "../entities/Charityrolelink";
 import { Event } from "../entities/Event";
 import { Eventlike } from "../entities/Eventlike";
+import { Posteventlink } from "../entities/Posteventlink";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
-import { PaginatedEvents } from "../utils/cardContainers/EventInput";
+import { EventInput, PaginatedEvents } from "../utils/cardContainers/EventInput";
+import { validateCharityAdmin } from "../utils/validateCharityAdmin";
+import { FieldError } from "./user";
+import { deletePosts } from "./post"
+import { Task } from "../entities/Task";
+
+
+@ObjectType()
+class EventResponse {
+    @Field(() => [FieldError], { nullable: true })
+    errors?: FieldError[];
+  
+    @Field(() => Event, {nullable: true})
+    event?: Event;
+
+    @Field(() => Boolean, { nullable: true })
+    success!: boolean;
+}
 
 @Resolver()
 export class EventResolver {
@@ -112,9 +131,10 @@ export class EventResolver {
     const events = await getConnection().query(
       `
     select e.*
-    from event p 
+    from event e 
+    where e.auditstat = TRUE
 
-    ${cursor ? `where e."createdAt" < $2` : ""}
+    ${cursor ? `and e."createdAt" < $2` : ""}
     order by 
         ${sortByLikes ? `e."likeNumber" DESC,` : ""} 
         e."createdAt" DESC
@@ -132,6 +152,234 @@ export class EventResolver {
   @Query(() => Event, { nullable: true })
   event(@Arg("id", () => Int) id: number): Promise<Event | undefined> {
     return Event.findOne(id);
+  }
+
+  @Mutation(() => EventResponse)
+  @UseMiddleware(isAuth)
+  async createEvent(
+    @Arg("input") input: EventInput,
+    @Arg('charityId', () => Number) charityId:number,
+    @Ctx() { req }: MyContext
+  ): Promise<EventResponse> {
+    
+    if (!req.session.userId) {
+        return {
+            errors: [
+                {
+                    field: "User",
+                    message: "User is not authenticated."
+                }
+            ],
+            success: false
+        }
+    }
+
+    const resp = await validateCharityAdmin({charityId:charityId, userid:req.session.userId});
+
+    if (!resp.success) {
+        return {
+            errors: resp.errors,
+            success: resp.success
+        }
+    }
+
+    const char = charityId;
+
+    // create event in db
+    const event = await Event.create({
+        ...input,
+        charityId: char,
+        creatorId: req.session.userId,
+    }).save()
+    // add admin as event volunteer 
+    // await Eventvolunteer.create({
+    //     eventId: event.id,
+    //     userId: req.session.userId,
+    //     adminapproval: AdminApproval.APPROVED,
+    //     userroleId: 1
+    // }).save();
+
+    const ads = await Charityrolelink.find({where: {id: charityId}});
+    const mapped = ads.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1);
+    await getConnection().transaction(async (tm) => {
+        await tm.query(`
+        insert into eventvolunteer("eventId", "userId", adminapproval, "userroleId")
+        select $1 as eventid, unnest(string_to_array($2,',')::int[]) as userId, 'approved' as adm, 1 as uri
+        `, [event.id, mapped])
+    })
+
+    // return event
+    return {event: event,success: true};
+  }
+
+  @Mutation(() => EventResponse)
+  @UseMiddleware(isAuth)
+  async updateEvent(
+    @Arg("id") id: number,
+    @Arg("input") input: EventInput,
+    @Ctx() { req }: MyContext
+  ): Promise<EventResponse> {
+    
+    if (!req.session.userId) {
+        return {
+            errors: [
+                {
+                    field: "User",
+                    message: "User is not authenticated."
+                }
+            ],
+            success: false
+        }
+    }
+
+    const ev = await Event.findOne({where: {id: id, auditstat: true}});
+
+    if (!ev) {
+        return {
+            errors: [
+                {
+                    field: "Event",
+                    message: "That event does not exist."
+                }
+            ],
+            success: false
+        }
+    }
+
+    const charityId = ev.charityId;
+
+    const resp = await validateCharityAdmin({charityId: charityId, userid:req.session.userId});
+
+    if (!resp.success) {
+        return {
+            errors: resp.errors,
+            success: resp.success
+        }
+    }
+
+    const char = charityId;
+
+    const result = await getConnection()
+      .createQueryBuilder()
+      .update(Event)
+      .set({ name: input.name, description: input.description, dateStart: input.dateStart, dateEnd: input.dateEnd })
+      .where('id = :id and "charityId" = :charityId and auditstat=true', {
+        id,
+        charityId: char,
+      })
+      .returning("*")
+      .execute();
+
+    return {event: result.raw[0], success: true};
+
+  }
+
+  @Mutation(() => EventResponse)
+  @UseMiddleware(isAuth)
+  async deleteEvent(
+    @Arg("id") id: number,
+    @Ctx() { req }: MyContext
+  ): Promise<EventResponse> {
+    // check credentials
+    if (!req.session.userId) {
+        return {
+            errors: [
+                {
+                    field: "User",
+                    message: "User is not authenticated."
+                }
+            ],
+            success: false
+        }
+    }
+
+    const ev = await Event.findOne({where: {id: id, auditstat: true}});
+
+    if (!ev) {
+        return {
+            errors: [
+                {
+                    field: "Event",
+                    message: "That event does not exist."
+                }
+            ],
+            success: false
+        }
+    }
+
+    const charityId = ev.charityId;
+
+    const resp = await validateCharityAdmin({charityId: charityId, userid:req.session.userId});
+
+    if (!resp.success) {
+        return {
+            errors: resp.errors,
+            success: resp.success
+        }
+    }
+
+    // if credentials are satisfied, mark event as deleted
+
+    await getConnection().transaction(async (tm) => {
+        tm.query(`
+        update event 
+        set auditstat = false
+        where id = $1
+        `, [id])
+    });
+
+    // mark Eventlikes as deleted
+
+    await getConnection().transaction(async (tm) => {
+        tm.query(`
+        update eventlike 
+        set auditstat = false
+        where "eventId" = $1
+        `, [id])
+    });
+
+    // get list of posteventlinks which are about event
+
+    const pels = await Posteventlink.find({where: {eventId: id}});
+    const postkeys = pels.map(pe => pe.postId);
+
+    // mark posts which are about event
+    await deletePosts(postkeys);
+
+    // mark Eventvolunteers as deleted
+    await getConnection().transaction(async (tm) => {
+        tm.query(`
+        update eventvolunteer 
+        set auditstat = false
+        where "eventId" = $1
+        `, [id])
+    });
+
+    // mark Tasks as deleted
+    const tasks = await Task.find({where: {eventId: id, auditstat: true}});
+    const taskkeys = tasks.map(pe => pe.eventId);
+
+    await getConnection().transaction(async (tm) => {
+        tm.query(`
+        update task 
+        set auditstat = false
+        where "eventId" = $1
+        `, [id])
+    });
+
+    await getConnection().transaction(async (tm) => {
+        tm.query(`
+        UPDATE taskvolunteer AS ev 
+        SET auditstat = false
+        FROM (select unnest(string_to_array($1,',')::int[]) as taskId ) AS tid
+        WHERE ev."postId" = tid.taskId
+        `, [taskkeys.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)]);
+      })
+    
+    
+    // mark Taskvolunteers as deleted
+    return {success: true};
+
   }
 
 }

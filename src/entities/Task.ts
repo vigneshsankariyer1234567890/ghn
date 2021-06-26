@@ -1,5 +1,5 @@
 import { ObjectType, Field } from "type-graphql";
-import { Entity, BaseEntity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from "typeorm";
+import { Entity, BaseEntity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, CreateDateColumn, UpdateDateColumn } from "typeorm";
 import { Event } from "./Event";
 import { Taskvolunteer } from "./Taskvolunteer";
 
@@ -21,9 +21,7 @@ export class Task extends BaseEntity {
     @Column()
     eventId: number;
 
-    @ManyToOne(() => Event, event => event.tasks, {
-        onDelete: "CASCADE"
-    })
+    @ManyToOne(() => Event, event => event.tasks)
     event: Event;
 
     @Field()
@@ -34,6 +32,9 @@ export class Task extends BaseEntity {
     @Column({type: "timestamp"})
     deadline!: Date;
 
+    @Column({type: "boolean", default:true})
+    auditstat!: boolean
+
     @Column({
         type: "enum",
         enum: TaskCompletionStatus,
@@ -43,5 +44,13 @@ export class Task extends BaseEntity {
 
     @OneToMany(() => Taskvolunteer, tv => tv.task)
     taskvolunteers: Taskvolunteer[]
+
+    @Field(() => String)
+    @CreateDateColumn()
+    createdAt: Date;
+
+    @Field(() => String)
+    @UpdateDateColumn()
+    updatedAt: Date;
 
 }

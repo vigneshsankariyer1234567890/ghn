@@ -5,7 +5,6 @@ import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
 import { FieldError } from "./user";
 import { Usercategory } from "../entities/Usercategory";
-import { Charity } from "../entities/Charity";
 import { validateCharityAdmin } from "../utils/validateCharityAdmin";
 import { Charitycategory } from "../entities/Charitycategory";
 
@@ -89,7 +88,7 @@ export class CategoryResolver {
     @Mutation(() => CategoryResponse)
     async updateCharityCategories(
         @Arg('categories', () => CategoryInput) categories: CategoryInput,
-        @Arg('uen', () => String) uen:string,
+        @Arg('charityId', () => Number) charityId:number,
         @Ctx() {req}: MyContext
     ): Promise<CategoryResponse> {
         
@@ -105,14 +104,16 @@ export class CategoryResolver {
             }
         }
 
-        const errors = await validateCharityAdmin({uen:uen, userid:req.session.userId});
+        const resp = await validateCharityAdmin({charityId:charityId, userid:req.session.userId});
 
-        if (errors) {
+        if (!resp.success) {
             return {
-                errors,
-                success: false
+                errors: resp.errors,
+                success: resp.success
             }
         }
+
+        const charity = charityId;
 
         const catarr = categories.categories;
 
@@ -127,20 +128,7 @@ export class CategoryResolver {
             };
         }
 
-        const charity = await Charity.findOne({where: {uen:uen}});
-
-        if (!charity) {
-            return {
-                errors: [
-                    {  
-                        field: "Charity", 
-                        message: "That charity does not exist."  
-                    }],
-                success: false
-            }; 
-        }
-
-        const uc = await Charitycategory.find({where: {charityId:charity.id, auditstat:true}});
+        const uc = await Charitycategory.find({where: {charityId:charity, auditstat:true}});
 
         if (uc.length>0) {
             // updates to false
@@ -149,7 +137,7 @@ export class CategoryResolver {
                 update charitycategory
                 set auditstat = false
                 where "charityId" = $1
-            `, [charity.id])
+            `, [charity])
             });
 
         }
@@ -160,7 +148,7 @@ export class CategoryResolver {
                 await tm.query(`
                     insert into charitycategory ("charityId", "categoryId")
                     values ($1, $2)
-                `, [charity.id, category])
+                `, [charity, category])
             })
         });
         

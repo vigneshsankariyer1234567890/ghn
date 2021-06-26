@@ -5,7 +5,7 @@ import { Taskvolunteer } from "./Taskvolunteer";
 import { User } from "./User";
 import { Userrole } from "./Userrole";
 
-enum AdminApproval {
+export enum AdminApproval {
     PENDING = "pending",
     APPROVED = "approved",
     REJECTED = "rejected"
@@ -22,17 +22,13 @@ export class Eventvolunteer extends BaseEntity {
     @Column()
     eventId: number;
 
-    @ManyToOne(() => Event, event => event.eventVolunteers, {
-        onDelete: "CASCADE"
-    })
+    @ManyToOne(() => Event, event => event.eventVolunteers)
     event: Event;
 
     @Column()
     userId: number;
 
-    @ManyToOne(() => User, user => user.volunteerActivities, {
-        onDelete: "CASCADE"
-    })
+    @ManyToOne(() => User, user => user.volunteerActivities)
     user: User;
 
     @Column({
@@ -45,9 +41,7 @@ export class Eventvolunteer extends BaseEntity {
     @Column()
     userroleId: number
 
-    @ManyToOne(() => Userrole, ur => ur.eventVolunteer, {
-        onDelete: "CASCADE"
-    })
+    @ManyToOne(() => Userrole, ur => ur.eventVolunteer)
     userrole: Userrole
 
     @OneToMany(() => Taskvolunteer, tv => tv.eventvolunteer)
@@ -55,4 +49,7 @@ export class Eventvolunteer extends BaseEntity {
 
     @Column({type: "boolean", default:true})
     auditstat!: boolean
+
+    @Column({type: "boolean", default:false})
+    volunteeringCompleted!: boolean
 }

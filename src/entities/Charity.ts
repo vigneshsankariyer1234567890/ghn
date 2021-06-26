@@ -33,9 +33,7 @@ export class Charity extends BaseEntity {
   charitycreatorId!: number;
 
   @Field(() => User)
-  @ManyToOne(() => User, user => user.charitycreator, {
-    onDelete: "CASCADE",
-  })
+  @ManyToOne(() => User, user => user.charitycreator)
   charitycreator: User;
 
   @OneToMany(() => Charityrolelink, crl => crl.charity)
@@ -47,6 +45,8 @@ export class Charity extends BaseEntity {
   @OneToMany(() => Event, event => event.charity)
   charityevents: Event[]
 
+  @Column({type: "boolean", default:true})
+  auditstat!: boolean
 
   @Field(() => String)
   @CreateDateColumn()

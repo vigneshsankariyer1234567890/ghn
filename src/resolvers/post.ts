@@ -120,8 +120,8 @@ export class PostResolver {
       `
     select p.*
     from post p 
-
-    ${cursor ? `where p."createdAt" < $2` : ""}
+    where p.auditstat = true
+    ${cursor ? `and p."createdAt" < $2` : ""}
     order by 
       ${sortByLikes ? `p."likeNumber" DESC,` : ""}
       p."createdAt" DESC
@@ -195,8 +195,46 @@ export class PostResolver {
     // await Post.delete({ id, creatorId: req.session.userId});
 
     // cascade
-    await Post.delete({ id, creatorId: req.session.userId });
+    // await Post.delete({ id, creatorId: req.session.userId });
+    // change to mark posts as deleted, then mark all Likes to deleted
+    await getConnection().transaction(async (tm) => {
+      tm.query(`
+        update post 
+        set auditstat = false
+        where id = $1 and "creatorId" = $2
+      `, [id, req.session.userId]);
+    })
+
+    await getConnection().transaction(async(tm) => {
+      tm.query(`
+        update "like" 
+        set auditstat = false
+        where "postId" = $1
+      `, [id]);
+    })
 
     return true;
   }
+}
+
+export async function deletePosts(postIds: number[]): Promise<void> {
+  await getConnection().transaction(async (tm) => {
+    tm.query(`
+    UPDATE "post" AS p 
+    SET auditstat = false
+    FROM (select unnest(string_to_array($1,',')::int[]) as postId ) AS pid
+    WHERE p.id = pid.postId
+    `, [postIds.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)]);
+  })
+
+  await getConnection().transaction(async (tm) => {
+    tm.query(`
+    UPDATE "like" AS l 
+    SET auditstat = false
+    FROM (select unnest(string_to_array($1,',')::int[]) as postId ) AS pid
+    WHERE l."postId" = pid.postId
+    `, [postIds.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)]);
+  })
+
+  return
 }

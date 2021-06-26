@@ -29,4 +29,7 @@ export class Category extends BaseEntity {
   @Field(() => String)
   @UpdateDateColumn()
   udpatedAt: Date;
+
+  @Column({type: "boolean", default:true})
+  auditstat!: boolean
 }

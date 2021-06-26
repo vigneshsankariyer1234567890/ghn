@@ -1,9 +1,14 @@
-import { InputType, Field } from "type-graphql";
+import { InputType, Field, Int } from "type-graphql";
 
 @InputType()
 export class CharityUserInput {
-  @Field()
-  uen: string;
+  
+  @Field(() => String, {nullable: true})
+  uen?: string;
+
+  @Field(() => Int, {nullable: true})
+  charityId?: number;
+
   @Field()
   userid: number;
 }

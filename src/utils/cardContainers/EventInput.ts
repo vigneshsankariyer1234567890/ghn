@@ -12,9 +12,16 @@ import {
   @InputType()
   export class EventInput {
     @Field()
-    title: string;
+    name: string;
+
     @Field()
-    text: string;
+    description: string;
+
+    @Field(() => String)
+    dateStart!: Date;
+
+    @Field(() => String)
+    dateEnd!: Date
   }
   
   @ObjectType()
