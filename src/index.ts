@@ -35,6 +35,8 @@ import { Task } from "./entities/Task";
 import { Taskvolunteer } from "./entities/Taskvolunteer";
 import { Eventlike } from "./entities/Eventlike";
 import { createEventLikesLoader } from "./utils/dataloaders/createEventLikesLoader";
+import { EventResolver } from "./resolvers/event";
+import { createCharityLoader } from "./utils/dataloaders/createCharityLoader";
 
 const main = async () => {
   const conn = await createConnection({
@@ -59,6 +61,7 @@ const main = async () => {
   // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('VOLUNTEER')`);
   // console.log(await Userrole.find()); // remember that primary key generation starts from 1
   // console.log(await Category.find());
+  // console.log(await Charityrolelink.find());
             
 
   const app = express();
@@ -105,7 +108,7 @@ const main = async () => {
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
-      resolvers: [HelloResolver, PostResolver, UserResolver, CategoryResolver, CharityResolver],
+      resolvers: [HelloResolver, PostResolver, UserResolver, CategoryResolver, CharityResolver, EventResolver],
       validate: false,
     }),
     context: ({ req, res }): MyContext => ({
@@ -115,7 +118,8 @@ const main = async () => {
       userLoader: createUserLoader(),
       likeLoader: createLikesLoader(),
       categoryLoader: createCategoryLoader(),
-      eventLikeLoader: createEventLikesLoader()
+      eventLikeLoader: createEventLikesLoader(),
+      charityLoader: createCharityLoader()
     }),
     playground: true,
     introspection: true

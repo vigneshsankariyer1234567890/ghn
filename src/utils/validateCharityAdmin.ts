@@ -11,7 +11,7 @@ export class CharityResponseObject{
 
 export const validateCharityAdmin = async (options: CharityUserInput): Promise<CharityResponseObject> => {
 
-    if (!(options.uen) || !(options.charityId)) {
+    if (!(options.uen) && !(options.charityId)) {
         return {
             errors: [{
                 field: "Required Parameters",
@@ -39,6 +39,17 @@ export const validateCharityAdmin = async (options: CharityUserInput): Promise<C
         }
         charid = res.id;
     } else {
+        if (!options.charityId) {
+            return {
+                errors: [
+                    {
+                        field: "charityId",
+                        message: "Please provide a CharityId."
+                    }
+                ],
+                success: false
+            }
+        }
 
         charid = options.charityId
 

@@ -3,6 +3,7 @@ import { BaseEntity, Column, CreateDateColumn, Entity, ManyToOne, OneToMany, Pri
 import { Charitycategory } from "./Charitycategory";
 import { Charityrolelink } from "./Charityrolelink";
 import { Event } from "./Event";
+import { Posteventlink } from "./Posteventlink";
 import { User } from "./User";
 
 @ObjectType()
@@ -44,6 +45,9 @@ export class Charity extends BaseEntity {
 
   @OneToMany(() => Event, event => event.charity)
   charityevents: Event[]
+
+  @OneToMany(() => Posteventlink, pel => pel.charity)
+  charityeventposts: Posteventlink[]
 
   @Column({type: "boolean", default:true})
   auditstat!: boolean

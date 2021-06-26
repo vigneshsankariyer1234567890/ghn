@@ -15,7 +15,8 @@ import { Like } from "../entities/Like";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
-import { PaginatedPosts, PostInput } from "../utils/cardContainers/PostInput";
+import { PaginatedPosts, PostInput, EPost } from "../utils/cardContainers/PostInput";
+import { Posteventlink } from "../entities/Posteventlink";
 
 @Resolver(Post)
 export class PostResolver {
@@ -103,54 +104,88 @@ export class PostResolver {
   @Query(() => PaginatedPosts)
   async posts(
     @Arg("limit", () => Int) limit: number,
-    @Arg("sortByLikes") sortByLikes: boolean,
+    // @Arg("sortByLikes") sortByLikes: boolean,
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
 
-    const replacements: any[] = [realLimitPlusOne];
+    let date:Date;
 
     if (cursor) {
-      replacements.push(new Date(parseInt(cursor))); //cursor null at first
+      date = new Date(parseInt(cursor));
+    } else {
+      date = new Date(Date.now());
+      date = new Date(date.setHours(date.getHours() + 8));
     }
 
+    // const date = cursor ? new Date(cursor) : new Date(Date.now());
+
     // actual query
-    const posts = await getConnection().query(
-      `
-    select p.*
-    from post p 
-    where p.auditstat = true
-    ${cursor ? `and p."createdAt" < $2` : ""}
-    order by 
-      ${sortByLikes ? `p."likeNumber" DESC,` : ""}
-      p."createdAt" DESC
-    limit $1
-    `,
-      replacements
-    );
+    const posts 
+    // = await getConnection().query(
+    //   `
+    // select p.*
+    // from post p 
+    // where p.auditstat = true
+    // ${cursor ? `and p."createdAt" < $2` : ""}
+    // order by 
+    //   ${sortByLikes ? `p."likeNumber" DESC,` : ""}
+    //   p."createdAt" DESC
+    // limit $1
+    // `,
+    //   replacements
+    // );
+     = await getConnection()
+     .createQueryBuilder(Post, `po`)
+     .select(`po.*`)
+     .where(`po.auditstat = true`)
+     .andWhere(`po."createdAt" < :cursor::timestamp`, { cursor: date })
+     .orderBy(`po."createdAt"`, `DESC`)
+     .limit(realLimitPlusOne)
+     .getRawMany<Post>();
+
+    const eposts = await PaginatedPosts.convertPostsToEPosts(posts);
 
     return {
-      posts: posts.slice(0, realLimit),
+      posts: eposts.slice(0, realLimit),
       hasMore: posts.length === realLimitPlusOne,
     };
   }
 
-  @Query(() => Post, { nullable: true })
-  post(@Arg("id", () => Int) id: number): Promise<Post | undefined> {
-    return Post.findOne(id);
+  @Query(() => EPost, { nullable: true })
+  async post(@Arg("id", () => Int) id: number): Promise<EPost | undefined> {
+    const p = await Post.findOne(id);
+    if (!p) {
+      return undefined;
+    }
+    if (!(p.isEvent)) {
+      return {post: p, isEvent: p.isEvent};
+    }
+    const eventinfo = await getConnection()
+    .createQueryBuilder()
+    .select('pel."postId"', "postid")
+    .addSelect('pel."eventId"')
+    .addSelect('pel."eventName"')
+    .from(Post, "po")
+    .leftJoin(Posteventlink, "pel", 'pel."postId" = po.id')
+    .where('po.id IN (:...ids)', {ids: [p.id]})
+    .getRawOne<{postid: number, eventId?: number, eventName?: string}>()
+    
+    return {post: p, isEvent: p.isEvent, eventId: eventinfo.eventId, eventName: eventinfo.eventName};
   }
 
-  @Mutation(() => Post)
+  @Mutation(() => EPost)
   @UseMiddleware(isAuth)
   async createPost(
     @Arg("input") input: PostInput,
     @Ctx() { req }: MyContext
-  ): Promise<Post> {
-    return Post.create({
+  ): Promise<EPost> {
+    const p = await Post.create({
       ...input,
       creatorId: req.session.userId,
     }).save();
+    return {post: p, isEvent:false}
   }
 
   @Mutation(() => Post, { nullable: true })
@@ -213,6 +248,14 @@ export class PostResolver {
       `, [id]);
     })
 
+    await getConnection().transaction(async(tm) => {
+      tm.query(`
+        update posteventlink 
+        set auditstat = false
+        where "postId" = $1
+      `, [id]);
+    })
+
     return true;
   }
 }
@@ -235,6 +278,15 @@ export async function deletePosts(postIds: number[]): Promise<void> {
     WHERE l."postId" = pid.postId
     `, [postIds.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)]);
   })
+
+  await getConnection().transaction(async (tm) => {
+    tm.query(`
+    UPDATE posteventlink AS pel 
+    SET auditstat = false
+    FROM (select unnest(string_to_array($1,',')::int[]) as postId ) AS pid
+    WHERE pel."postId" = pid.postId
+    `, [postIds.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)])
+  });
 
   return
 }

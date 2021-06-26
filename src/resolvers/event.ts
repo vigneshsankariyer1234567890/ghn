@@ -12,6 +12,9 @@ import { validateCharityAdmin } from "../utils/validateCharityAdmin";
 import { FieldError } from "./user";
 import { deletePosts } from "./post"
 import { Task } from "../entities/Task";
+import { Charity } from "../entities/Charity";
+import { EPost, PostInput } from "../utils/cardContainers/PostInput";
+import { Post } from "../entities/Post";
 
 
 @ObjectType()
@@ -26,7 +29,19 @@ class EventResponse {
     success!: boolean;
 }
 
-@Resolver()
+@ObjectType()
+class EventPostResponse {
+    @Field(() => [FieldError], { nullable: true })
+    errors?: FieldError[];
+  
+    @Field(() => EPost, {nullable: true})
+    epost?: EPost;
+
+    @Field(() => Boolean, { nullable: true })
+    success!: boolean;
+}
+
+@Resolver(Event)
 export class EventResolver {
   @FieldResolver(() => String)
   textSnippet(@Root() event: Event) {
@@ -36,6 +51,11 @@ export class EventResolver {
   @FieldResolver(() => User)
   creator(@Root() event: Event, @Ctx() { userLoader }: MyContext) {
     return userLoader.load(event.creatorId);
+  }
+
+  @FieldResolver(() => Charity)
+  charity(@Root() event: Event, @Ctx() { charityLoader }: MyContext) {
+    return charityLoader.load(event.charityId);
   }
 
   @FieldResolver(() => Int, { nullable: true })
@@ -133,7 +153,6 @@ export class EventResolver {
     select e.*
     from event e 
     where e.auditstat = TRUE
-
     ${cursor ? `and e."createdAt" < $2` : ""}
     order by 
         ${sortByLikes ? `e."likeNumber" DESC,` : ""} 
@@ -199,8 +218,9 @@ export class EventResolver {
     //     userroleId: 1
     // }).save();
 
-    const ads = await Charityrolelink.find({where: {id: charityId}});
-    const mapped = ads.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1);
+    const ads = await Charityrolelink.find({where: {charityId: charityId}});
+    const mapped = ads.map(crl => crl.userId).reduce<string>((a,b) => a + b + `,`,``).slice(0,-1);
+    console.log(mapped);
     await getConnection().transaction(async (tm) => {
         await tm.query(`
         insert into eventvolunteer("eventId", "userId", adminapproval, "userroleId")
@@ -319,7 +339,7 @@ export class EventResolver {
     }
 
     // if credentials are satisfied, mark event as deleted
-
+    try {
     await getConnection().transaction(async (tm) => {
         tm.query(`
         update event 
@@ -372,14 +392,75 @@ export class EventResolver {
         UPDATE taskvolunteer AS ev 
         SET auditstat = false
         FROM (select unnest(string_to_array($1,',')::int[]) as taskId ) AS tid
-        WHERE ev."postId" = tid.taskId
+        WHERE ev."taskId" = tid.taskId
         `, [taskkeys.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)]);
       })
-    
+    } catch (err) {
+        console.log(err);
+        return {
+            errors: [{field:"DB error", message: "Please check the database."}]
+            , success:false
+        }
+    }
     
     // mark Taskvolunteers as deleted
     return {success: true};
 
   }
+
+  @Mutation(() => EventPostResponse)
+  @UseMiddleware(isAuth)
+  async shareEvent(
+    @Arg("id") id: number,
+    @Arg("input") input: PostInput,
+    @Ctx() { req }: MyContext
+  ): Promise<EventPostResponse> {
+
+    if (!req.session.userId) {
+        return {
+            errors: [
+                {
+                    field: "User",
+                    message: "User is not authenticated."
+                }
+            ],
+            success: false
+        }
+    }
+
+    const ev = await Event.findOne({where: {id: id, auditstat: true}});
+
+    if (!ev) {
+        return {
+            errors: [
+                {
+                    field: "Event",
+                    message: "That event does not exist."
+                }
+            ],
+            success: false
+        }
+    }
+
+    const post = await Post.create({
+        ...input,
+        isEvent: true,
+        creatorId: req.session.userId
+    }).save();
+
+    const pel = await Posteventlink.create({
+        eventId: ev.id,
+        eventName: ev.name,
+        charityId: ev.charityId,
+        postId: post.id
+    }).save();
+
+    const epost: EPost = {post: post, isEvent: true, eventId: pel.eventId, eventName: pel.eventName};
+
+    return {success: true, epost: epost};
+  }
+
+
+
 
 }
