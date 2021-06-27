@@ -80,7 +80,7 @@ export class CharityResolver {
   async categories(
     @Root() charity: Charity,
     @Ctx() { categoryLoader }: MyContext
-  ) {
+  ): Promise<(Category | Error)[]> {
     // n+1 problem, n posts, n sql queries executed
     // return User.findOne(post.creatorId);
 
@@ -110,6 +110,28 @@ export class CharityResolver {
     });
 
     return follow ? 1 : null;
+  }
+
+  @FieldResolver(() => [User])
+  async followers(
+    @Root() charity: Charity,
+    @Ctx() { userLoader }: MyContext
+  ): Promise<(User | Error)[]> {
+    // n+1 problem, n posts, n sql queries executed
+    // return User.findOne(post.creatorId);
+
+    // using dataloader
+    const charityfollows = await Charityfollow.find({
+      where: { charityId: charity.id },
+    });
+
+    if (charityfollows.length < 1) {
+      return [];
+    }
+
+    const userids = charityfollows.map((cf) => cf.userId);
+
+    return await userLoader.loadMany(userids);
   }
 
   @Query(() => Charity, { nullable: true })
