@@ -1,4 +1,4 @@
-import { Column, Entity, ManyToOne } from "typeorm";
+import { Entity, ManyToOne, PrimaryColumn } from "typeorm";
 import { User } from "./User";
 import { Event } from "./Event";
 import { iLike } from "./iLike";
@@ -17,7 +17,7 @@ export class Eventlike extends iLike {
   })
   user: User;
 
-  @Column()
+  @PrimaryColumn()
   eventId!: number;
 
   @ManyToOne(() => Event, (event) => event.likes, {

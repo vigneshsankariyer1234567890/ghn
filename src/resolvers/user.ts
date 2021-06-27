@@ -1,25 +1,30 @@
 import {
-    Resolver,
-    Mutation,
-    Arg,
-    Field,
-    Ctx,
-    ObjectType,
-    Query,
-    FieldResolver,
-    Root,
-  } from "type-graphql";
+  Resolver,
+  Mutation,
+  Arg,
+  Field,
+  Ctx,
+  ObjectType,
+  Query,
+  FieldResolver,
+  Root,
+} from "type-graphql";
 import { MyContext } from "../types";
 import { User } from "../entities/User";
 import argon2 from "argon2";
 import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from "../constants";
-import {UsernamePasswordInput} from '../utils/UsernamePasswordInput'
+import { UsernamePasswordInput } from "../utils/UsernamePasswordInput";
 import { validateRegister } from "../utils/validateRegister";
 import { sendEmail } from "../utils/sendEmail";
 import { v4 } from "uuid";
 import { getConnection } from "typeorm";
 import { Category } from "../entities/Category";
 import { Usercategory } from "../entities/Usercategory";
+import { Charity } from "../entities/Charity";
+import { Charityfollow } from "../entities/Charityfollow";
+import { Charityrolelink } from "../entities/Charityrolelink";
+import { Event } from "../entities/Event";
+import { Eventlike } from "../entities/Eventlike";
 
 @ObjectType()
 export class FieldError {
@@ -40,7 +45,6 @@ class UserResponse {
 
 @Resolver(User)
 export class UserResolver {
-
   @FieldResolver(() => String)
   email(@Root() user: User, @Ctx() { req }: MyContext) {
     // this is the current user and its ok to show them their own email
@@ -51,25 +55,93 @@ export class UserResolver {
     return "";
   }
 
-  @FieldResolver( () => [Category] )
-    async categories(
-        @Root() user: User,
-        @Ctx() {categoryLoader}: MyContext
-    ) {
-        // n+1 problem, n posts, n sql queries executed
-        // return User.findOne(post.creatorId);
+  @FieldResolver(() => [Category])
+  async categories(@Root() user: User, @Ctx() { categoryLoader }: MyContext) {
+    // n+1 problem, n posts, n sql queries executed
+    // return User.findOne(post.creatorId);
 
-        // using dataloader
-        const usercategories = await Usercategory.findByIds([user.id]);
+    // using dataloader
+    const usercategories = //await Usercategory.findByIds([user.id]);
+      await getConnection()
+        .createQueryBuilder()
+        .select('*')
+        .from(Usercategory, `uc`)
+        .where(`uc.auditstat = TRUE`)
+        .andWhere(`uc."userId" = :id`, {id:user.id})
+        .getRawMany<Usercategory>()
 
-        if (usercategories.length < 1) {
-          return [];
-        }
 
-        const catids = usercategories.map(uc => uc.categoryId);
-        
-        return await categoryLoader.loadMany(catids);
-    };
+    if (usercategories.length < 1) {
+      return [];
+    }
+
+    const catids = usercategories.map((uc) => uc.categoryId);
+
+    return await categoryLoader.loadMany(catids);
+  }
+
+  @FieldResolver(() => [Charity])
+  async followedCharities(
+    @Root() user: User,
+    @Ctx() { charityLoader }: MyContext
+  ): Promise<(Charity | Error)[]> {
+    // n+1 problem, n posts, n sql queries executed
+    // return User.findOne(post.creatorId);
+
+    // using dataloader
+    const charityfollows = await Charityfollow.find({
+      where: { userId: user.id, auditstat: true },
+    });
+
+    if (charityfollows.length < 1) {
+      return [];
+    }
+
+    const charIds = charityfollows.map((cf) => cf.charityId);
+
+    return await charityLoader.loadMany(charIds);
+  }
+
+  @FieldResolver(() => [Charity])
+  async createdCharities(
+    @Root() user: User,
+    @Ctx() { charityLoader }: MyContext
+  ): Promise<(Charity | Error)[]> {
+    // n+1 problem, n posts, n sql queries executed
+    // return User.findOne(post.creatorId);
+
+    // using dataloader
+    const crls = await Charityrolelink.find({
+      where: { userId: user.id, auditstat: true },
+    });
+
+    if (crls.length < 1) {
+      return [];
+    }
+
+    const charIds = crls.map((cf) => cf.charityId);
+
+    return await charityLoader.loadMany(charIds);
+  }
+
+  @FieldResolver(() => [Event])
+  async likedEvents(
+    @Root() user: User,
+    @Ctx() { eventLoader }: MyContext
+  ): Promise<(Event | Error)[]> {
+    const likedEvents = await Eventlike.find({
+      where: {userId: user.id, auditstat: true}
+    });
+
+    if (likedEvents.length < 1) {
+      return [];
+    }
+
+    const eventIds = likedEvents.map(le => le.eventId);
+
+    return await eventLoader.loadMany(eventIds);
+    
+  }
 
   @Query(() => User, { nullable: true })
   me(@Ctx() { req }: MyContext) {
@@ -272,7 +344,4 @@ export class UserResolver {
 
     return true;
   }
-
-
-
 }

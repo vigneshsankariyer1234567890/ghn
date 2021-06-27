@@ -68,12 +68,14 @@ export class EventResolver {
     }
 
     const like = await eventLikeLoader.load({
-      cardId: event.id,
+      eventId: event.id,
       userId: req.session.userId,
     });
 
     return like ? 1 : null;
   }
+
+
 
   @Mutation(() => Boolean)
   @UseMiddleware(isAuth)
@@ -83,20 +85,22 @@ export class EventResolver {
   ) {
     const { userId } = req.session;
 
-    const like = await Eventlike.findOne({ where: { eventId, userId, auditstat:true } });
+    const like = await Eventlike.findOne({ where: { eventId: eventId, userId: userId } });
 
     // user has liked post before and unliking the post
     if (like) {
       await getConnection().transaction(async (tm) => {
         //to change later to auditStat = 10
-        await tm.query(
-          `
-                update "eventlike" 
-                set auditstat = false
-                where id = $1
-            `,
-          [like.id]
-        );
+        // await tm.query(
+        //   `
+        //         update "eventlike" 
+        //         set auditstat = false
+        //         where id = $1
+        //     `,
+        //   [like.id]
+        // );
+
+        await tm.delete(Eventlike, {userId: userId, eventId: eventId});
 
         await tm.query(
           `
@@ -111,13 +115,15 @@ export class EventResolver {
     } else if (!like) {
       //has never liked before
       await getConnection().transaction(async (tm) => {
-        await tm.query(
-          `
-            insert into "eventlike" ("userId", "eventId")
-            values ($1, $2)
-          `,
-          [userId, eventId]
-        );
+        // await tm.query(
+        //   `
+        //     insert into "eventlike" ("userId", "eventId")
+        //     values ($1, $2)
+        //   `,
+        //   [userId, eventId]
+        // );
+
+        await tm.createQueryBuilder().insert().into(Eventlike).values({userId: userId, eventId: eventId}).execute();
 
         await tm.query(
           `
@@ -350,13 +356,21 @@ export class EventResolver {
 
     // mark Eventlikes as deleted
 
+    // await getConnection().transaction(async (tm) => {
+    //     tm.query(`
+    //     update eventlike 
+    //     set auditstat = false
+    //     where "eventId" = $1
+    //     `, [id])
+    // });
+
     await getConnection().transaction(async (tm) => {
-        tm.query(`
-        update eventlike 
-        set auditstat = false
-        where "eventId" = $1
-        `, [id])
-    });
+        await tm.createQueryBuilder()
+          .delete()
+          .from(Eventlike, `el`)
+          .where(`el."eventId" :event`, {event: id})
+          .execute()
+      })
 
     // get list of posteventlinks which are about event
 

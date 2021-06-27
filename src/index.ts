@@ -39,6 +39,7 @@ import { EventResolver } from "./resolvers/event";
 import { createCharityLoader } from "./utils/dataloaders/createCharityLoader";
 import { Charityfollow } from "./entities/Charityfollow";
 import { createCharityFollowLoader } from "./utils/dataloaders/createCharityFollowLoader";
+import { createEventLoader } from "./utils/dataloaders/createEventLoader";
 
 const main = async () => {
   const conn = await createConnection({
@@ -122,7 +123,8 @@ const main = async () => {
       categoryLoader: createCategoryLoader(),
       eventLikeLoader: createEventLikesLoader(),
       charityLoader: createCharityLoader(),
-      charityFollowLoader: createCharityFollowLoader()
+      charityFollowLoader: createCharityFollowLoader(),
+      eventLoader: createEventLoader()
     }),
     playground: true,
     introspection: true

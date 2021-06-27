@@ -24,6 +24,7 @@ import { User } from "../entities/User";
 import { Category } from "../entities/Category";
 import { Charitycategory } from "../entities/Charitycategory";
 import { Charityfollow } from "../entities/Charityfollow";
+import { Event } from "../entities/Event";
 
 @ObjectType()
 class UENResponse {
@@ -132,6 +133,24 @@ export class CharityResolver {
     const userids = charityfollows.map((cf) => cf.userId);
 
     return await userLoader.loadMany(userids);
+  }
+
+  @FieldResolver(() => [Event])
+  async charityEvents(
+    @Root() charity: Charity,
+    @Ctx() { eventLoader }: MyContext
+  ): Promise<(Event | Error)[]> {
+    const events = await Event.find({
+      where: {charityId: charity.id, auditstat: true}
+    })
+
+    if (events.length < 1) {
+      return [];
+    }
+
+    const eventIds = events.map(e => e.id);
+
+    return await eventLoader.loadMany(eventIds);
   }
 
   @Query(() => Charity, { nullable: true })

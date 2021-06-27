@@ -37,7 +37,7 @@ export class PostResolver {
     }
 
     const like = await likeLoader.load({
-      cardId: post.id,
+      postId: post.id,
       userId: req.session.userId,
     });
 
@@ -52,20 +52,22 @@ export class PostResolver {
   ) {
     const { userId } = req.session;
 
-    const like = await Like.findOne({ where: { postId, userId, auditstat:true } });
+    const like = await Like.findOne({ where: { postId, userId } });
 
     // user has liked post before and unliking the post
     if (like) {
       await getConnection().transaction(async (tm) => {
         //to change later to auditStat = 10
-        await tm.query(
-          `
-                update "like" 
-                set auditstat = false
-                where id = $1
-            `,
-          [like.id]
-        );
+        // await tm.query(
+        //   `
+        //         update "like" 
+        //         set auditstat = false
+        //         where id = $1
+        //     `,
+        //   [like.id]
+        // );
+
+        await tm.delete(Like, {userId: userId, postId: postId});
 
         await tm.query(
           `
@@ -80,13 +82,15 @@ export class PostResolver {
     } else if (!like) {
       //has never liked before
       await getConnection().transaction(async (tm) => {
-        await tm.query(
-          `
-            insert into "like" ("userId", "postId")
-            values ($1, $2)
-          `,
-          [userId, postId]
-        );
+        // await tm.query(
+        //   `
+        //     insert into "like" ("userId", "postId")
+        //     values ($1, $2)
+        //   `,
+        //   [userId, postId]
+        // );
+
+        await tm.createQueryBuilder().insert().into(Like).values({userId: userId, postId: postId}).execute()
 
         await tm.query(
           `
@@ -226,7 +230,7 @@ export class PostResolver {
     // if (post.creatorId !== req.session.userId) {
     //     throw new Error('not authorized');
     // }
-    // await Like.delete({ postId: id});
+    
     // await Post.delete({ id, creatorId: req.session.userId});
 
     // cascade
@@ -240,13 +244,21 @@ export class PostResolver {
       `, [id, req.session.userId]);
     })
 
-    await getConnection().transaction(async(tm) => {
-      tm.query(`
-        update "like" 
-        set auditstat = false
-        where "postId" = $1
-      `, [id]);
+    await getConnection().transaction(async (tm) => {
+      await tm.createQueryBuilder()
+        .delete()
+        .from(Like, `l`)
+        .where(`l."postId" = :post`, {post: id})
+        .execute()
     })
+
+    // await getConnection().transaction(async(tm) => {
+    //   tm.query(`
+    //     update "like" 
+    //     set auditstat = false
+    //     where "postId" = $1
+    //   `, [id]);
+    // })
 
     await getConnection().transaction(async(tm) => {
       tm.query(`
@@ -270,13 +282,21 @@ export async function deletePosts(postIds: number[]): Promise<void> {
     `, [postIds.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)]);
   })
 
+  // await getConnection().transaction(async (tm) => {
+  //   tm.query(`
+  //   UPDATE "like" AS l 
+  //   SET auditstat = false
+  //   FROM (select unnest(string_to_array($1,',')::int[]) as postId ) AS pid
+  //   WHERE l."postId" = pid.postId
+  //   `, [postIds.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)]);
+  // })
+
   await getConnection().transaction(async (tm) => {
-    tm.query(`
-    UPDATE "like" AS l 
-    SET auditstat = false
-    FROM (select unnest(string_to_array($1,',')::int[]) as postId ) AS pid
-    WHERE l."postId" = pid.postId
-    `, [postIds.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)]);
+    await tm.createQueryBuilder()
+      .delete()
+      .from(Like, `l`)
+      .where(`l."postId" in (:posts)`, {posts: postIds})
+      .execute()
   })
 
   await getConnection().transaction(async (tm) => {

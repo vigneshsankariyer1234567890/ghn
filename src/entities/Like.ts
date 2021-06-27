@@ -1,4 +1,4 @@
-import { Column, Entity, ManyToOne } from "typeorm";
+import { Entity, ManyToOne, PrimaryColumn } from "typeorm";
 import { User } from "./User";
 import { Post } from "./Post";
 import { iLike } from "./iLike";
@@ -12,15 +12,15 @@ import { iLike } from "./iLike";
 @Entity()
 export class Like extends iLike {
 
-  @ManyToOne(() => User, (user) => user.likes, {
+  @ManyToOne(() => User, (user) => user.likes,{
     onDelete: "CASCADE",
   })
   user: User;
 
-  @Column()
+  @PrimaryColumn()
   postId!: number;
 
-  @ManyToOne(() => Post, (post) => post.likes, {
+  @ManyToOne(() => Post, (post) => post.likes,{
     onDelete: "CASCADE",
   })
   post: Post;

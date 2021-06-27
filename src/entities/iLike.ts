@@ -1,14 +1,18 @@
-import { BaseEntity, Column, PrimaryGeneratedColumn } from "typeorm";
+import { BaseEntity
+    //, Column
+    , PrimaryColumn
+    //, PrimaryGeneratedColumn 
+} from "typeorm";
 
 export abstract class iLike extends BaseEntity {
 
-    @PrimaryGeneratedColumn()
-    id!: number;
+    // @PrimaryGeneratedColumn()
+    // id!: number;
 
-    @Column()
+    @PrimaryColumn()
     userId!: number
 
-    @Column({type: "boolean", default:true})
-    auditstat!: boolean;
+    // @Column({type: "boolean", default:true})
+    // auditstat!: boolean;
 
 }
