@@ -25,6 +25,7 @@ import { Category } from "../entities/Category";
 import { Charitycategory } from "../entities/Charitycategory";
 import { Charityfollow } from "../entities/Charityfollow";
 import { Event } from "../entities/Event";
+import convertCharIdsToUserIds from "../utils/dataloaders/createCharityFollowLoader";
 
 @ObjectType()
 class UENResponse {
@@ -100,15 +101,11 @@ export class CharityResolver {
   }
 
   @FieldResolver(() => Int, { nullable: true })
-  async followStatus(@Root() charity: Charity, @Ctx() { charityFollowLoader, req }: MyContext) {
+  async followStatus(@Root() charity: Charity, @Ctx() { req }: MyContext) {
     if (!req.session.userId) {
       return null;
     }
-
-    const follow = await charityFollowLoader.load({
-      charId: charity.id,
-      userId: req.session.userId,
-    });
+    const follow = await Charityfollow.findOne({where: {charityId: charity.id, userId: req.session.userId, auditstat: true}});
 
     return follow ? 1 : null;
   }
@@ -120,19 +117,12 @@ export class CharityResolver {
   ): Promise<(User | Error)[]> {
     // n+1 problem, n posts, n sql queries executed
     // return User.findOne(post.creatorId);
-
     // using dataloader
-    const charityfollows = await Charityfollow.find({
-      where: { charityId: charity.id },
-    });
+    const rec: Record<number, number[]> = await convertCharIdsToUserIds([charity.id]);
 
-    if (charityfollows.length < 1) {
-      return [];
-    }
+    const nums = rec[charity.id];
 
-    const userids = charityfollows.map((cf) => cf.userId);
-
-    return await userLoader.loadMany(userids);
+    return await userLoader.loadMany(nums);
   }
 
   @FieldResolver(() => [Event])
@@ -253,6 +243,14 @@ export class CharityResolver {
     @Arg("options") options: CharityDataInput,
     @Ctx() { req }: MyContext
   ): Promise<CharityResponse> {
+
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User is not authenticated." }],
+      };
+    }
+
     let charity;
     try {
       // User.create({}).save()

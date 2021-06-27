@@ -38,7 +38,6 @@ import { createEventLikesLoader } from "./utils/dataloaders/createEventLikesLoad
 import { EventResolver } from "./resolvers/event";
 import { createCharityLoader } from "./utils/dataloaders/createCharityLoader";
 import { Charityfollow } from "./entities/Charityfollow";
-import { createCharityFollowLoader } from "./utils/dataloaders/createCharityFollowLoader";
 import { createEventLoader } from "./utils/dataloaders/createEventLoader";
 
 const main = async () => {
@@ -123,7 +122,6 @@ const main = async () => {
       categoryLoader: createCategoryLoader(),
       eventLikeLoader: createEventLikesLoader(),
       charityLoader: createCharityLoader(),
-      charityFollowLoader: createCharityFollowLoader(),
       eventLoader: createEventLoader()
     }),
     playground: true,

@@ -15,10 +15,11 @@ import { Task } from "../entities/Task";
 import { Charity } from "../entities/Charity";
 import { EPost, PostInput } from "../utils/cardContainers/PostInput";
 import { Post } from "../entities/Post";
+import { Eventvolunteer } from "../entities/Eventvolunteer";
 
 
 @ObjectType()
-class EventResponse {
+export class EventResponse {
     @Field(() => [FieldError], { nullable: true })
     errors?: FieldError[];
   
@@ -73,6 +74,25 @@ export class EventResolver {
     });
 
     return like ? 1 : null;
+  }
+
+  @FieldResolver(() => String, {nullable: true})
+  async approvalStatus(
+      @Root() event: Event,
+      @Ctx() { req } : MyContext
+  ): Promise<string | null> {
+    if (!req.session.userId) {
+        return null;
+    }
+
+    const ev = await Eventvolunteer
+        .findOne({where: {eventId: event.id, userId: req.session.userId, auditstat:true}});
+
+    if (!ev) {
+        return null;
+    }
+
+    return ev.adminapproval;
   }
 
 
@@ -159,7 +179,7 @@ export class EventResolver {
     select e.*
     from event e 
     where e.auditstat = TRUE
-    ${cursor ? `and e."createdAt" < $2` : ""}
+    ${cursor ? `and e."updatedAt" < $2` : ""}
     order by 
         ${sortByLikes ? `e."likeNumber" DESC,` : ""} 
         e."createdAt" DESC
@@ -473,6 +493,8 @@ export class EventResolver {
 
     return {success: true, epost: epost};
   }
+
+
 
 
 

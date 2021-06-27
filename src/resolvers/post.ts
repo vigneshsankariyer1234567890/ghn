@@ -126,26 +126,12 @@ export class PostResolver {
     // const date = cursor ? new Date(cursor) : new Date(Date.now());
 
     // actual query
-    const posts 
-    // = await getConnection().query(
-    //   `
-    // select p.*
-    // from post p 
-    // where p.auditstat = true
-    // ${cursor ? `and p."createdAt" < $2` : ""}
-    // order by 
-    //   ${sortByLikes ? `p."likeNumber" DESC,` : ""}
-    //   p."createdAt" DESC
-    // limit $1
-    // `,
-    //   replacements
-    // );
-     = await getConnection()
+    const posts = await getConnection()
      .createQueryBuilder(Post, `po`)
      .select(`po.*`)
      .where(`po.auditstat = true`)
-     .andWhere(`po."createdAt" < :cursor::timestamp`, { cursor: date })
-     .orderBy(`po."createdAt"`, `DESC`)
+     .andWhere(`po."updatedAt" < :cursor::timestamp`, { cursor: date })
+     .orderBy(`po."updatedAt"`, `DESC`)
      .limit(realLimitPlusOne)
      .getRawMany<Post>();
 
