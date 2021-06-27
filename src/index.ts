@@ -37,6 +37,8 @@ import { Eventlike } from "./entities/Eventlike";
 import { createEventLikesLoader } from "./utils/dataloaders/createEventLikesLoader";
 import { EventResolver } from "./resolvers/event";
 import { createCharityLoader } from "./utils/dataloaders/createCharityLoader";
+import { Charityfollow } from "./entities/Charityfollow";
+import { createCharityFollowLoader } from "./utils/dataloaders/createCharityFollowLoader";
 
 const main = async () => {
   const conn = await createConnection({
@@ -47,7 +49,7 @@ const main = async () => {
     migrations: [path.join(__dirname, "./migrations/*")],
     entities: [Post, User, Like, Usercategory, Category, Charity
       , Charitycategory, Charityrolelink, Userrole, Event, Posteventlink, Eventvolunteer, Task
-      , Taskvolunteer, Eventlike],
+      , Taskvolunteer, Eventlike, Charityfollow],
   });
 
   // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
@@ -119,7 +121,8 @@ const main = async () => {
       likeLoader: createLikesLoader(),
       categoryLoader: createCategoryLoader(),
       eventLikeLoader: createEventLikesLoader(),
-      charityLoader: createCharityLoader()
+      charityLoader: createCharityLoader(),
+      charityFollowLoader: createCharityFollowLoader()
     }),
     playground: true,
     introspection: true

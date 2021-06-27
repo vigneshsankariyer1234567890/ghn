@@ -1,6 +1,7 @@
-import { Field, ObjectType } from "type-graphql";
+import { Field, ObjectType, Int } from "type-graphql";
 import { BaseEntity, Column, CreateDateColumn, Entity, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { Charitycategory } from "./Charitycategory";
+import { Charityfollow } from "./Charityfollow";
 import { Charityrolelink } from "./Charityrolelink";
 import { Event } from "./Event";
 import { Posteventlink } from "./Posteventlink";
@@ -48,6 +49,16 @@ export class Charity extends BaseEntity {
 
   @OneToMany(() => Posteventlink, pel => pel.charity)
   charityeventposts: Posteventlink[]
+
+  @OneToMany(() => Charityfollow, cf => cf.charity)
+  charityFollowers: Charityfollow[]
+
+  @Field()
+  @Column({ type: "int", default: 0 })
+  followNumber!: number;
+
+  @Field(() => Int, { nullable: true })
+  followStatus: number | null; // 1 or -1 or null
 
   @Column({type: "boolean", default:true})
   auditstat!: boolean

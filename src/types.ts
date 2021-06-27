@@ -6,6 +6,7 @@ import { createLikesLoader } from './utils/dataloaders/createLikesLoader';
 import { createUserLoader } from './utils/dataloaders/createUserLoader';
 import { createEventLikesLoader } from './utils/dataloaders/createEventLikesLoader';
 import { createCharityLoader } from './utils/dataloaders/createCharityLoader';
+import { createCharityFollowLoader } from './utils/dataloaders/createCharityFollowLoader';
 
 export type MyContext = {
   req: Request & {session: Session & Partial<SessionData> & {userId?: number}};
@@ -16,4 +17,5 @@ export type MyContext = {
   categoryLoader: ReturnType<typeof createCategoryLoader>;
   eventLikeLoader: ReturnType<typeof createEventLikesLoader>;
   charityLoader: ReturnType<typeof createCharityLoader>;
+  charityFollowLoader: ReturnType<typeof createCharityFollowLoader>
 };
