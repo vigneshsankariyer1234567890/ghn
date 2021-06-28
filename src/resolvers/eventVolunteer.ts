@@ -6,16 +6,26 @@ import {
   Int,
   Ctx,
   Query,
+  ObjectType,
+  Field,
 } from "type-graphql";
 import { getConnection } from "typeorm";
-import { Charity } from "../entities/Charity";
 import { Event } from "../entities/Event";
 import { AdminApproval, Eventvolunteer } from "../entities/Eventvolunteer";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
 import { PaginatedEventVolunteers } from "../utils/cardContainers/PaginatedEventVolunteers";
-import { validateCharityAdmin } from "../utils/validateCharityAdmin";
 import { EventResponse } from "./event";
+import { FieldError } from "./user";
+
+@ObjectType()
+class UpdateEventVolunteerResponse {
+  @Field(() => Boolean)
+  success!: boolean;
+
+  @Field(() => [FieldError])
+  errors?: FieldError[];
+}
 
 @Resolver()
 export class EventvolunteerResolver {
@@ -25,7 +35,7 @@ export class EventvolunteerResolver {
     @Arg("eventId", () => Int) eventId: number,
     @Ctx() { req }: MyContext
   ): Promise<EventResponse> {
-    const ev = await Event.findOne({ where: { id: eventId } });
+    const ev = await Event.findOne({ where: { id: eventId, auditstat: true } });
 
     if (!ev) {
       return {
@@ -99,19 +109,30 @@ export class EventvolunteerResolver {
     return { event: ev, success: true };
   }
 
-  @Query(() => PaginatedEventVolunteers)
   @UseMiddleware(isAuth)
-  async getAllEventRequestList(
+  @Query(() => PaginatedEventVolunteers)
+  async getVolunteerRequestListForEvent(
     @Arg("eventId", () => Int) eventId: number,
     @Arg("limit", () => Int) limit: number,
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null, // on updatedDate
     @Ctx() { req }: MyContext
   ): Promise<PaginatedEventVolunteers> {
+    // this view should be used for charity admins only
     if (!req.session.userId) {
       return {
         success: false,
         hasMore: false,
         errors: [{ field: "User", message: "User is not authenticated." }],
+      };
+    }
+
+    if (!req.session.charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+        hasMore: false,
       };
     }
 
@@ -125,24 +146,15 @@ export class EventvolunteerResolver {
       };
     }
 
-    const char = await getConnection()
-      .createQueryBuilder()
-      .select(`ch.*`)
-      .from(Charity, `ch`)
-      .innerJoin(Event, `e`, `ch.id = e."charityId"`)
-      .where(`e.id = :eid`, { eid: eventId })
-      .getRawOne<Charity>();
+    const adids = req.session.charityAdminIds.filter((i) => i === ev.charityId);
 
-    const check = await validateCharityAdmin({
-      userid: req.session.userId,
-      charityId: char.id,
-    });
-
-    if (!check.success) {
+    if (adids.length === 0) {
       return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
         success: false,
         hasMore: false,
-        errors: check.errors,
       };
     }
 
@@ -163,14 +175,94 @@ export class EventvolunteerResolver {
       .select(`ev.*`)
       .where(`ev.auditstat = true`)
       .andWhere(`ev."updatedAt" < :cursor::timestamp`, { cursor: date })
+      .andWhere(`ev.adminapproval = 'approved' or ev.adminapproval = 'pending'`)
+      .andWhere(`ev."volunteeringCompleted" = false`)
       .orderBy(`ev."updatedAt"`, `DESC`)
+      .addOrderBy(`ev.adminapproval`, `DESC`)
       .limit(realLimitPlusOne)
       .getRawMany<Eventvolunteer>();
-    
-    return { 
-        success: true,
-        hasMore: eventvolunteers.length === realLimitPlusOne,
-        eventvolunteers: eventvolunteers.slice(0, realLimit)
+
+    return {
+      success: true,
+      hasMore: eventvolunteers.length === realLimitPlusOne,
+      eventvolunteers: eventvolunteers.slice(0, realLimit),
     };
+  }
+
+  @UseMiddleware(isAuth)
+  @Mutation(() => UpdateEventVolunteerResponse)
+  async acceptEventVolunteer(
+    @Arg("eventId", () => Int) eventId: number,
+    @Arg("eventVolunteerId", () => Int) eventVolunteerId: number,
+    @Arg("acceptVolunteer", () => Boolean) acceptVolunteer: boolean,
+    @Ctx() { req }: MyContext
+  ): Promise<UpdateEventVolunteerResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User is not authenticated." }],
+      };
+    }
+
+    if (!req.session.charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
+
+    const ev = await Event.findOne({
+      where: { id: eventId, auditstat: true, completed: false },
+    });
+
+    if (!ev) {
+      return {
+        success: false,
+        errors: [{ field: "Event", message: "That event does not exist." }],
+      };
+    }
+
+    const adids = req.session.charityAdminIds.filter((i) => i === ev.charityId);
+
+    if (adids.length === 0) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
+
+    const checkVolunteer = await Eventvolunteer.findOne({
+      where: {
+        eventId: eventId,
+        userId: eventVolunteerId,
+        adminapproval: "pending",
+        auditstat: true,
+        volunteeringCompleted: false,
+      },
+    });
+
+    if (!checkVolunteer) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Event Volunteer",
+            message: "There is no such volunteer request.",
+          },
+        ],
+      };
+    }
+
+    checkVolunteer.adminapproval = acceptVolunteer
+      ? AdminApproval.APPROVED
+      : AdminApproval.REJECTED;
+
+    checkVolunteer.save();
+
+    return { success: true };
   }
 }

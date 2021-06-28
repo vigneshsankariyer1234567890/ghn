@@ -1,4 +1,16 @@
-import { Arg, Ctx, Field, FieldResolver, Int, Mutation, ObjectType, Query, Resolver, Root, UseMiddleware } from "type-graphql";
+import {
+  Arg,
+  Ctx,
+  Field,
+  FieldResolver,
+  Int,
+  Mutation,
+  ObjectType,
+  Query,
+  Resolver,
+  Root,
+  UseMiddleware,
+} from "type-graphql";
 import { getConnection } from "typeorm";
 import { Charityrolelink } from "../entities/Charityrolelink";
 import { Event } from "../entities/Event";
@@ -7,39 +19,40 @@ import { Posteventlink } from "../entities/Posteventlink";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
-import { EventInput, PaginatedEvents } from "../utils/cardContainers/EventInput";
-import { validateCharityAdmin } from "../utils/validateCharityAdmin";
+import {
+  EventInput,
+  PaginatedEvents,
+} from "../utils/cardContainers/EventInput";
 import { FieldError } from "./user";
-import { deletePosts } from "./post"
+import { deletePosts } from "./post";
 import { Task } from "../entities/Task";
 import { Charity } from "../entities/Charity";
 import { EPost, PostInput } from "../utils/cardContainers/PostInput";
 import { Post } from "../entities/Post";
 import { Eventvolunteer } from "../entities/Eventvolunteer";
 
-
 @ObjectType()
 export class EventResponse {
-    @Field(() => [FieldError], { nullable: true })
-    errors?: FieldError[];
-  
-    @Field(() => Event, {nullable: true})
-    event?: Event;
+  @Field(() => [FieldError], { nullable: true })
+  errors?: FieldError[];
 
-    @Field(() => Boolean, { nullable: true })
-    success!: boolean;
+  @Field(() => Event, { nullable: true })
+  event?: Event;
+
+  @Field(() => Boolean, { nullable: true })
+  success!: boolean;
 }
 
 @ObjectType()
 class EventPostResponse {
-    @Field(() => [FieldError], { nullable: true })
-    errors?: FieldError[];
-  
-    @Field(() => EPost, {nullable: true})
-    epost?: EPost;
+  @Field(() => [FieldError], { nullable: true })
+  errors?: FieldError[];
 
-    @Field(() => Boolean, { nullable: true })
-    success!: boolean;
+  @Field(() => EPost, { nullable: true })
+  epost?: EPost;
+
+  @Field(() => Boolean, { nullable: true })
+  success!: boolean;
 }
 
 @Resolver(Event)
@@ -76,26 +89,25 @@ export class EventResolver {
     return like ? 1 : null;
   }
 
-  @FieldResolver(() => String, {nullable: true})
+  @FieldResolver(() => String, { nullable: true })
   async approvalStatus(
-      @Root() event: Event,
-      @Ctx() { req } : MyContext
+    @Root() event: Event,
+    @Ctx() { req }: MyContext
   ): Promise<string | null> {
     if (!req.session.userId) {
-        return null;
+      return null;
     }
 
-    const ev = await Eventvolunteer
-        .findOne({where: {eventId: event.id, userId: req.session.userId, auditstat:true}});
+    const ev = await Eventvolunteer.findOne({
+      where: { eventId: event.id, userId: req.session.userId, auditstat: true },
+    });
 
     if (!ev) {
-        return null;
+      return null;
     }
 
     return ev.adminapproval;
   }
-
-
 
   @Mutation(() => Boolean)
   @UseMiddleware(isAuth)
@@ -105,22 +117,16 @@ export class EventResolver {
   ) {
     const { userId } = req.session;
 
-    const like = await Eventlike.findOne({ where: { eventId: eventId, userId: userId } });
+    const like = await Eventlike.findOne({
+      where: { eventId: eventId, userId: userId },
+    });
 
     // user has liked post before and unliking the post
     if (like) {
       await getConnection().transaction(async (tm) => {
         //to change later to auditStat = 10
-        // await tm.query(
-        //   `
-        //         update "eventlike" 
-        //         set auditstat = false
-        //         where id = $1
-        //     `,
-        //   [like.id]
-        // );
 
-        await tm.delete(Eventlike, {userId: userId, eventId: eventId});
+        await tm.delete(Eventlike, { userId: userId, eventId: eventId });
 
         await tm.query(
           `
@@ -135,15 +141,12 @@ export class EventResolver {
     } else if (!like) {
       //has never liked before
       await getConnection().transaction(async (tm) => {
-        // await tm.query(
-        //   `
-        //     insert into "eventlike" ("userId", "eventId")
-        //     values ($1, $2)
-        //   `,
-        //   [userId, eventId]
-        // );
-
-        await tm.createQueryBuilder().insert().into(Eventlike).values({userId: userId, eventId: eventId}).execute();
+        await tm
+          .createQueryBuilder()
+          .insert()
+          .into(Eventlike)
+          .values({ userId: userId, eventId: eventId })
+          .execute();
 
         await tm.query(
           `
@@ -155,7 +158,7 @@ export class EventResolver {
         );
       });
     }
-    return (like) ? false : true;
+    return like ? false : true;
   }
 
   @Query(() => PaginatedEvents)
@@ -203,59 +206,74 @@ export class EventResolver {
   @UseMiddleware(isAuth)
   async createEvent(
     @Arg("input") input: EventInput,
-    @Arg('charityId', () => Number) charityId:number,
+    @Arg("charityId", () => Number) charityId: number,
     @Ctx() { req }: MyContext
   ): Promise<EventResponse> {
-    
     if (!req.session.userId) {
-        return {
-            errors: [
-                {
-                    field: "User",
-                    message: "User is not authenticated."
-                }
-            ],
-            success: false
-        }
+      return {
+        errors: [
+          {
+            field: "User",
+            message: "User is not authenticated.",
+          },
+        ],
+        success: false,
+      };
     }
 
-    const resp = await validateCharityAdmin({charityId:charityId, userid:req.session.userId});
+    if (!req.session.charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
 
-    if (!resp.success) {
-        return {
-            errors: resp.errors,
-            success: resp.success
-        }
+    const adids = req.session.charityAdminIds.filter((i) => i === charityId);
+
+    if (adids.length === 0) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
     }
 
     const char = charityId;
 
     // create event in db
     const event = await Event.create({
-        ...input,
-        charityId: char,
-        creatorId: req.session.userId,
-    }).save()
-    // add admin as event volunteer 
-    // await Eventvolunteer.create({
-    //     eventId: event.id,
-    //     userId: req.session.userId,
-    //     adminapproval: AdminApproval.APPROVED,
-    //     userroleId: 1
-    // }).save();
+      // ...input,
+      name: input.name,
+      description: input.description,
+      dateStart: input.dateStart,
+      dateEnd: input.dateEnd,
+      venue: input.venue ? input.venue : "",
+      charityId: char,
+      creatorId: req.session.userId,
+    }).save();
+    // add admin as event volunteer
 
-    const ads = await Charityrolelink.find({where: {charityId: charityId}});
-    const mapped = ads.map(crl => crl.userId).reduce<string>((a,b) => a + b + `,`,``).slice(0,-1);
+    const ads = await Charityrolelink.find({ where: { charityId: charityId } });
+    const mapped = ads
+      .map((crl) => crl.userId)
+      .reduce<string>((a, b) => a + b + `,`, ``)
+      .slice(0, -1);
     console.log(mapped);
     await getConnection().transaction(async (tm) => {
-        await tm.query(`
+      await tm.query(
+        `
         insert into eventvolunteer("eventId", "userId", adminapproval, "userroleId")
         select $1 as eventid, unnest(string_to_array($2,',')::int[]) as userId, 'approved' as adm, 1 as uri
-        `, [event.id, mapped])
-    })
+        `,
+        [event.id, mapped]
+      );
+    });
 
     // return event
-    return {event: event,success: true};
+    return { event: event, success: true };
   }
 
   @Mutation(() => EventResponse)
@@ -265,59 +283,72 @@ export class EventResolver {
     @Arg("input") input: EventInput,
     @Ctx() { req }: MyContext
   ): Promise<EventResponse> {
-    
     if (!req.session.userId) {
-        return {
-            errors: [
-                {
-                    field: "User",
-                    message: "User is not authenticated."
-                }
-            ],
-            success: false
-        }
+      return {
+        errors: [
+          {
+            field: "User",
+            message: "User is not authenticated.",
+          },
+        ],
+        success: false,
+      };
     }
 
-    const ev = await Event.findOne({where: {id: id, auditstat: true}});
+    const ev = await Event.findOne({ where: { id: id, auditstat: true } });
 
     if (!ev) {
-        return {
-            errors: [
-                {
-                    field: "Event",
-                    message: "That event does not exist."
-                }
-            ],
-            success: false
-        }
+      return {
+        errors: [
+          {
+            field: "Event",
+            message: "That event does not exist.",
+          },
+        ],
+        success: false,
+      };
     }
 
     const charityId = ev.charityId;
 
-    const resp = await validateCharityAdmin({charityId: charityId, userid:req.session.userId});
-
-    if (!resp.success) {
-        return {
-            errors: resp.errors,
-            success: resp.success
-        }
+    if (!req.session.charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
     }
 
-    const char = charityId;
+    const adids = req.session.charityAdminIds.filter((i) => i === charityId);
+
+    if (adids.length === 0) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
 
     const result = await getConnection()
       .createQueryBuilder()
       .update(Event)
-      .set({ name: input.name, description: input.description, dateStart: input.dateStart, dateEnd: input.dateEnd })
+      .set({
+        name: input.name,
+        description: input.description,
+        dateStart: input.dateStart,
+        dateEnd: input.dateEnd,
+        venue: input.venue ? input.venue : ev.venue,
+      })
       .where('id = :id and "charityId" = :charityId and auditstat=true', {
         id,
-        charityId: char,
+        charityId: charityId,
       })
       .returning("*")
       .execute();
 
-    return {event: result.raw[0], success: true};
-
+    return { event: result.raw[0], success: true };
   }
 
   @Mutation(() => EventResponse)
@@ -328,118 +359,135 @@ export class EventResolver {
   ): Promise<EventResponse> {
     // check credentials
     if (!req.session.userId) {
-        return {
-            errors: [
-                {
-                    field: "User",
-                    message: "User is not authenticated."
-                }
-            ],
-            success: false
-        }
+      return {
+        errors: [
+          {
+            field: "User",
+            message: "User is not authenticated.",
+          },
+        ],
+        success: false,
+      };
     }
 
-    const ev = await Event.findOne({where: {id: id, auditstat: true}});
+    const ev = await Event.findOne({ where: { id: id, auditstat: true } });
 
     if (!ev) {
-        return {
-            errors: [
-                {
-                    field: "Event",
-                    message: "That event does not exist."
-                }
-            ],
-            success: false
-        }
+      return {
+        errors: [
+          {
+            field: "Event",
+            message: "That event does not exist.",
+          },
+        ],
+        success: false,
+      };
     }
 
     const charityId = ev.charityId;
 
-    const resp = await validateCharityAdmin({charityId: charityId, userid:req.session.userId});
+    if (!req.session.charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
 
-    if (!resp.success) {
-        return {
-            errors: resp.errors,
-            success: resp.success
-        }
+    const adids = req.session.charityAdminIds.filter((i) => i === charityId);
+
+    if (adids.length === 0) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
     }
 
     // if credentials are satisfied, mark event as deleted
     try {
-    await getConnection().transaction(async (tm) => {
-        tm.query(`
+      await getConnection().transaction(async (tm) => {
+        tm.query(
+          `
         update event 
         set auditstat = false
         where id = $1
-        `, [id])
-    });
+        `,
+          [id]
+        );
+      });
 
-    // mark Eventlikes as deleted
+      // mark Eventlikes as deleted
 
-    // await getConnection().transaction(async (tm) => {
-    //     tm.query(`
-    //     update eventlike 
-    //     set auditstat = false
-    //     where "eventId" = $1
-    //     `, [id])
-    // });
-
-    await getConnection().transaction(async (tm) => {
-        await tm.createQueryBuilder()
+      await getConnection().transaction(async (tm) => {
+        await tm
+          .createQueryBuilder()
           .delete()
           .from(Eventlike, `el`)
-          .where(`el."eventId" :event`, {event: id})
-          .execute()
-      })
+          .where(`el."eventId" :event`, { event: id })
+          .execute();
+      });
 
-    // get list of posteventlinks which are about event
+      // get list of posteventlinks which are about event
 
-    const pels = await Posteventlink.find({where: {eventId: id}});
-    const postkeys = pels.map(pe => pe.postId);
+      const pels = await Posteventlink.find({ where: { eventId: id } });
+      const postkeys = pels.map((pe) => pe.postId);
 
-    // mark posts which are about event
-    await deletePosts(postkeys);
+      // mark posts which are about event
+      await deletePosts(postkeys);
 
-    // mark Eventvolunteers as deleted
-    await getConnection().transaction(async (tm) => {
-        tm.query(`
+      // mark Eventvolunteers as deleted
+      await getConnection().transaction(async (tm) => {
+        tm.query(
+          `
         update eventvolunteer 
         set auditstat = false
         where "eventId" = $1
-        `, [id])
-    });
+        `,
+          [id]
+        );
+      });
 
-    // mark Tasks as deleted
-    const tasks = await Task.find({where: {eventId: id, auditstat: true}});
-    const taskkeys = tasks.map(pe => pe.eventId);
+      // mark Tasks as deleted
+      const tasks = await Task.find({
+        where: { eventId: id, auditstat: true },
+      });
+      const taskkeys = tasks.map((pe) => pe.eventId);
 
-    await getConnection().transaction(async (tm) => {
-        tm.query(`
+      await getConnection().transaction(async (tm) => {
+        tm.query(
+          `
         update task 
         set auditstat = false
         where "eventId" = $1
-        `, [id])
-    });
+        `,
+          [id]
+        );
+      });
 
-    await getConnection().transaction(async (tm) => {
-        tm.query(`
+      await getConnection().transaction(async (tm) => {
+        tm.query(
+          `
         UPDATE taskvolunteer AS ev 
         SET auditstat = false
         FROM (select unnest(string_to_array($1,',')::int[]) as taskId ) AS tid
         WHERE ev."taskId" = tid.taskId
-        `, [taskkeys.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)]);
-      })
+        `,
+          [taskkeys.reduce<string>((a, b) => a + b + `,`, ``).slice(0, -1)]
+        );
+      });
     } catch (err) {
-        console.log(err);
-        return {
-            errors: [{field:"DB error", message: "Please check the database."}]
-            , success:false
-        }
+      console.log(err);
+      return {
+        errors: [{ field: "DB error", message: "Please check the database." }],
+        success: false,
+      };
     }
-    
-    // mark Taskvolunteers as deleted
-    return {success: true};
 
+    // mark Taskvolunteers as deleted
+    return { success: true };
   }
 
   @Mutation(() => EventPostResponse)
@@ -449,54 +497,52 @@ export class EventResolver {
     @Arg("input") input: PostInput,
     @Ctx() { req }: MyContext
   ): Promise<EventPostResponse> {
-
     if (!req.session.userId) {
-        return {
-            errors: [
-                {
-                    field: "User",
-                    message: "User is not authenticated."
-                }
-            ],
-            success: false
-        }
+      return {
+        errors: [
+          {
+            field: "User",
+            message: "User is not authenticated.",
+          },
+        ],
+        success: false,
+      };
     }
 
-    const ev = await Event.findOne({where: {id: id, auditstat: true}});
+    const ev = await Event.findOne({ where: { id: id, auditstat: true } });
 
     if (!ev) {
-        return {
-            errors: [
-                {
-                    field: "Event",
-                    message: "That event does not exist."
-                }
-            ],
-            success: false
-        }
+      return {
+        errors: [
+          {
+            field: "Event",
+            message: "That event does not exist.",
+          },
+        ],
+        success: false,
+      };
     }
 
     const post = await Post.create({
-        ...input,
-        isEvent: true,
-        creatorId: req.session.userId
+      ...input,
+      isEvent: true,
+      creatorId: req.session.userId,
     }).save();
 
     const pel = await Posteventlink.create({
-        eventId: ev.id,
-        eventName: ev.name,
-        charityId: ev.charityId,
-        postId: post.id
+      eventId: ev.id,
+      eventName: ev.name,
+      charityId: ev.charityId,
+      postId: post.id,
     }).save();
 
-    const epost: EPost = {post: post, isEvent: true, eventId: pel.eventId, eventName: pel.eventName};
+    const epost: EPost = {
+      post: post,
+      isEvent: true,
+      eventId: pel.eventId,
+      eventName: pel.eventName,
+    };
 
-    return {success: true, epost: epost};
+    return { success: true, epost: epost };
   }
-
-
-
-
-
-
 }

@@ -9,7 +9,7 @@ import { createCharityLoader } from './utils/dataloaders/createCharityLoader';
 import { createEventLoader } from './utils/dataloaders/createEventLoader';
 
 export type MyContext = {
-  req: Request & {session: Session & Partial<SessionData> & {userId?: number}};
+  req: Request & {session: Session & Partial<SessionData> & {userId?: number, charityAdminIds?: number[]}};
   redis: Redis;
   res: Response;
   userLoader: ReturnType<typeof createUserLoader>;

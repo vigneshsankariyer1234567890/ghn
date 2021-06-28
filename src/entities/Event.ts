@@ -31,6 +31,10 @@ export class Event extends BaseEntity {
     @Column({type: "timestamp"})
     dateEnd!: Date
 
+    @Field(() => String)
+    @Column({type: "text", default: ""})
+    venue!: String
+
     @Column()
     charityId: number;
 

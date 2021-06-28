@@ -1,34 +1,28 @@
-import {
-    Field,
-  
-    InputType,
-  
-  
-    ObjectType
-  } from "type-graphql";
-  import { Event } from "../../entities/Event";
-  
-  
-  @InputType()
-  export class EventInput {
-    @Field()
-    name: string;
+import { Field, InputType, ObjectType } from "type-graphql";
+import { Event } from "../../entities/Event";
 
-    @Field()
-    description: string;
+@InputType()
+export class EventInput {
+  @Field()
+  name!: string;
 
-    @Field(() => String)
-    dateStart!: Date;
+  @Field()
+  description!: string;
 
-    @Field(() => String)
-    dateEnd!: Date
-  }
-  
-  @ObjectType()
-  export class PaginatedEvents {
-    @Field(() => [Event])
-    events: Event[];
-    @Field()
-    hasMore: boolean;
-  }
-  
+  @Field(() => String)
+  dateStart!: Date;
+
+  @Field(() => String)
+  dateEnd!: Date;
+
+  @Field(() => String, { nullable: true })
+  venue?: string;
+}
+
+@ObjectType()
+export class PaginatedEvents {
+  @Field(() => [Event])
+  events: Event[];
+  @Field()
+  hasMore: boolean;
+}

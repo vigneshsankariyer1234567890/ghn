@@ -15,7 +15,11 @@ import { Like } from "../entities/Like";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
-import { PaginatedPosts, PostInput, EPost } from "../utils/cardContainers/PostInput";
+import {
+  PaginatedPosts,
+  PostInput,
+  EPost,
+} from "../utils/cardContainers/PostInput";
 import { Posteventlink } from "../entities/Posteventlink";
 
 @Resolver(Post)
@@ -58,16 +62,8 @@ export class PostResolver {
     if (like) {
       await getConnection().transaction(async (tm) => {
         //to change later to auditStat = 10
-        // await tm.query(
-        //   `
-        //         update "like" 
-        //         set auditstat = false
-        //         where id = $1
-        //     `,
-        //   [like.id]
-        // );
 
-        await tm.delete(Like, {userId: userId, postId: postId});
+        await tm.delete(Like, { userId: userId, postId: postId });
 
         await tm.query(
           `
@@ -82,15 +78,12 @@ export class PostResolver {
     } else if (!like) {
       //has never liked before
       await getConnection().transaction(async (tm) => {
-        // await tm.query(
-        //   `
-        //     insert into "like" ("userId", "postId")
-        //     values ($1, $2)
-        //   `,
-        //   [userId, postId]
-        // );
-
-        await tm.createQueryBuilder().insert().into(Like).values({userId: userId, postId: postId}).execute()
+        await tm
+          .createQueryBuilder()
+          .insert()
+          .into(Like)
+          .values({ userId: userId, postId: postId })
+          .execute();
 
         await tm.query(
           `
@@ -102,7 +95,7 @@ export class PostResolver {
         );
       });
     }
-    return (like) ? false : true;
+    return like ? false : true;
   }
 
   @Query(() => PaginatedPosts)
@@ -114,7 +107,7 @@ export class PostResolver {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
 
-    let date:Date;
+    let date: Date;
 
     if (cursor) {
       date = new Date(parseInt(cursor));
@@ -123,17 +116,15 @@ export class PostResolver {
       date = new Date(date.setHours(date.getHours() + 8));
     }
 
-    // const date = cursor ? new Date(cursor) : new Date(Date.now());
-
     // actual query
     const posts = await getConnection()
-     .createQueryBuilder(Post, `po`)
-     .select(`po.*`)
-     .where(`po.auditstat = true`)
-     .andWhere(`po."updatedAt" < :cursor::timestamp`, { cursor: date })
-     .orderBy(`po."updatedAt"`, `DESC`)
-     .limit(realLimitPlusOne)
-     .getRawMany<Post>();
+      .createQueryBuilder(Post, `po`)
+      .select(`po.*`)
+      .where(`po.auditstat = true`)
+      .andWhere(`po."updatedAt" < :cursor::timestamp`, { cursor: date })
+      .orderBy(`po."updatedAt"`, `DESC`)
+      .limit(realLimitPlusOne)
+      .getRawMany<Post>();
 
     const eposts = await PaginatedPosts.convertPostsToEPosts(posts);
 
@@ -149,20 +140,25 @@ export class PostResolver {
     if (!p) {
       return undefined;
     }
-    if (!(p.isEvent)) {
-      return {post: p, isEvent: p.isEvent};
+    if (!p.isEvent) {
+      return { post: p, isEvent: p.isEvent };
     }
     const eventinfo = await getConnection()
-    .createQueryBuilder()
-    .select('pel."postId"', "postid")
-    .addSelect('pel."eventId"')
-    .addSelect('pel."eventName"')
-    .from(Post, "po")
-    .leftJoin(Posteventlink, "pel", 'pel."postId" = po.id')
-    .where('po.id IN (:...ids)', {ids: [p.id]})
-    .getRawOne<{postid: number, eventId?: number, eventName?: string}>()
-    
-    return {post: p, isEvent: p.isEvent, eventId: eventinfo.eventId, eventName: eventinfo.eventName};
+      .createQueryBuilder()
+      .select('pel."postId"', "postid")
+      .addSelect('pel."eventId"')
+      .addSelect('pel."eventName"')
+      .from(Post, "po")
+      .leftJoin(Posteventlink, "pel", 'pel."postId" = po.id')
+      .where("po.id IN (:...ids)", { ids: [p.id] })
+      .getRawOne<{ postid: number; eventId?: number; eventName?: string }>();
+
+    return {
+      post: p,
+      isEvent: p.isEvent,
+      eventId: eventinfo.eventId,
+      eventName: eventinfo.eventName,
+    };
   }
 
   @Mutation(() => EPost)
@@ -175,7 +171,7 @@ export class PostResolver {
       ...input,
       creatorId: req.session.userId,
     }).save();
-    return {post: p, isEvent:false}
+    return { post: p, isEvent: false };
   }
 
   @Mutation(() => Post, { nullable: true })
@@ -198,8 +194,6 @@ export class PostResolver {
       .execute();
 
     return result.raw[0];
-
-    // return Post.update({ id, creatorId: req.session.userId }, { title, text});
   }
 
   @Mutation(() => Boolean)
@@ -208,51 +202,36 @@ export class PostResolver {
     @Arg("id") id: number,
     @Ctx() { req }: MyContext
   ): Promise<boolean> {
-    // not cascade way
-    // const post = await Post.findOne(id)
-    // if (!post) {
-    //     return false;
-    // }
-    // if (post.creatorId !== req.session.userId) {
-    //     throw new Error('not authorized');
-    // }
-    
-    // await Post.delete({ id, creatorId: req.session.userId});
-
-    // cascade
-    // await Post.delete({ id, creatorId: req.session.userId });
-    // change to mark posts as deleted, then mark all Likes to deleted
     await getConnection().transaction(async (tm) => {
-      tm.query(`
+      tm.query(
+        `
         update post 
         set auditstat = false
         where id = $1 and "creatorId" = $2
-      `, [id, req.session.userId]);
-    })
+      `,
+        [id, req.session.userId]
+      );
+    });
 
     await getConnection().transaction(async (tm) => {
-      await tm.createQueryBuilder()
+      await tm
+        .createQueryBuilder()
         .delete()
         .from(Like, `l`)
-        .where(`l."postId" = :post`, {post: id})
-        .execute()
-    })
+        .where(`l."postId" = :post`, { post: id })
+        .execute();
+    });
 
-    // await getConnection().transaction(async(tm) => {
-    //   tm.query(`
-    //     update "like" 
-    //     set auditstat = false
-    //     where "postId" = $1
-    //   `, [id]);
-    // })
-
-    await getConnection().transaction(async(tm) => {
-      tm.query(`
+    await getConnection().transaction(async (tm) => {
+      tm.query(
+        `
         update posteventlink 
         set auditstat = false
         where "postId" = $1
-      `, [id]);
-    })
+      `,
+        [id]
+      );
+    });
 
     return true;
   }
@@ -260,39 +239,37 @@ export class PostResolver {
 
 export async function deletePosts(postIds: number[]): Promise<void> {
   await getConnection().transaction(async (tm) => {
-    tm.query(`
+    tm.query(
+      `
     UPDATE "post" AS p 
     SET auditstat = false
     FROM (select unnest(string_to_array($1,',')::int[]) as postId ) AS pid
     WHERE p.id = pid.postId
-    `, [postIds.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)]);
-  })
-
-  // await getConnection().transaction(async (tm) => {
-  //   tm.query(`
-  //   UPDATE "like" AS l 
-  //   SET auditstat = false
-  //   FROM (select unnest(string_to_array($1,',')::int[]) as postId ) AS pid
-  //   WHERE l."postId" = pid.postId
-  //   `, [postIds.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)]);
-  // })
+    `,
+      [postIds.reduce<string>((a, b) => a + b + `,`, ``).slice(0, -1)]
+    );
+  });
 
   await getConnection().transaction(async (tm) => {
-    await tm.createQueryBuilder()
+    await tm
+      .createQueryBuilder()
       .delete()
       .from(Like, `l`)
-      .where(`l."postId" in (:posts)`, {posts: postIds})
-      .execute()
-  })
+      .where(`l."postId" in (:posts)`, { posts: postIds })
+      .execute();
+  });
 
   await getConnection().transaction(async (tm) => {
-    tm.query(`
+    tm.query(
+      `
     UPDATE posteventlink AS pel 
     SET auditstat = false
     FROM (select unnest(string_to_array($1,',')::int[]) as postId ) AS pid
     WHERE pel."postId" = pid.postId
-    `, [postIds.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1)])
+    `,
+      [postIds.reduce<string>((a, b) => a + b + `,`, ``).slice(0, -1)]
+    );
   });
 
-  return
+  return;
 }

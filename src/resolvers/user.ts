@@ -61,15 +61,13 @@ export class UserResolver {
     // return User.findOne(post.creatorId);
 
     // using dataloader
-    const usercategories = //await Usercategory.findByIds([user.id]);
-      await getConnection()
-        .createQueryBuilder()
-        .select('*')
-        .from(Usercategory, `uc`)
-        .where(`uc.auditstat = TRUE`)
-        .andWhere(`uc."userId" = :id`, {id:user.id})
-        .getRawMany<Usercategory>()
-
+    const usercategories = await getConnection() //await Usercategory.findByIds([user.id]);
+      .createQueryBuilder()
+      .select("*")
+      .from(Usercategory, `uc`)
+      .where(`uc.auditstat = TRUE`)
+      .andWhere(`uc."userId" = :id`, { id: user.id })
+      .getRawMany<Usercategory>();
 
     if (usercategories.length < 1) {
       return [];
@@ -103,7 +101,7 @@ export class UserResolver {
   }
 
   @FieldResolver(() => [Charity])
-  async createdCharities(
+  async adminCharities(
     @Root() user: User,
     @Ctx() { charityLoader }: MyContext
   ): Promise<(Charity | Error)[]> {
@@ -130,17 +128,16 @@ export class UserResolver {
     @Ctx() { eventLoader }: MyContext
   ): Promise<(Event | Error)[]> {
     const likedEvents = await Eventlike.find({
-      where: {userId: user.id, auditstat: true}
+      where: { userId: user.id, auditstat: true },
     });
 
     if (likedEvents.length < 1) {
       return [];
     }
 
-    const eventIds = likedEvents.map(le => le.eventId);
+    const eventIds = likedEvents.map((le) => le.eventId);
 
     return await eventLoader.loadMany(eventIds);
-    
   }
 
   @Query(() => User, { nullable: true })
@@ -237,6 +234,16 @@ export class UserResolver {
 
     req.session.userId = user.id;
 
+    // Find the charities that user is admin of, map to charity ids and store in cookie
+
+    const charityAdmins = await Charityrolelink.find({
+      where: { auditstat: true, userId: user.id },
+    });
+
+    if (charityAdmins.length > 0) {
+      req.session.charityAdminIds = charityAdmins.map((ca) => ca.charityId);
+    }
+
     return {
       user,
     };
@@ -313,6 +320,14 @@ export class UserResolver {
 
     // log in user after change password
     req.session.userId = user.id;
+
+    const charityAdmins = await Charityrolelink.find({
+      where: { auditstat: true, userId: user.id },
+    });
+
+    if (charityAdmins.length > 0) {
+      req.session.charityAdminIds = charityAdmins.map((ca) => ca.charityId);
+    }
 
     return { user };
   }

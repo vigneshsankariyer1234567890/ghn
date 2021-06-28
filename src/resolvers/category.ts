@@ -1,11 +1,20 @@
-import { Resolver, Query, UseMiddleware, Arg, Ctx, Mutation, InputType, Field, ObjectType } from "type-graphql";
+import {
+  Resolver,
+  Query,
+  UseMiddleware,
+  Arg,
+  Ctx,
+  Mutation,
+  InputType,
+  Field,
+  ObjectType,
+} from "type-graphql";
 import { getConnection } from "typeorm";
 import { Category } from "../entities/Category";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
 import { FieldError } from "./user";
 import { Usercategory } from "../entities/Usercategory";
-import { validateCharityAdmin } from "../utils/validateCharityAdmin";
 import { Charitycategory } from "../entities/Charitycategory";
 
 @InputType()
@@ -16,142 +25,164 @@ class CategoryInput {
 
 @ObjectType()
 class CategoryResponse {
-    @Field(() => [FieldError], { nullable: true })
-    errors?: FieldError[];
-  
-    @Field(() => Boolean, { nullable: true })
-    success!: boolean;
+  @Field(() => [FieldError], { nullable: true })
+  errors?: FieldError[];
+
+  @Field(() => Boolean, { nullable: true })
+  success!: boolean;
 }
 
 @Resolver()
 export class CategoryResolver {
+  @Query(() => [Category])
+  async interests(): Promise<Category[]> {
+    return Category.find({
+      order: {
+        name: "ASC",
+      },
+    });
+  }
 
-    @Query(() => [Category])
-    async interests(): Promise<Category[]> {
-        return Category.find({
-            order: {
-                name: "ASC"
-            }
-        })
+  @UseMiddleware(isAuth)
+  @Mutation(() => CategoryResponse)
+  async updateUserCategories(
+    @Arg("categories", () => CategoryInput) categories: CategoryInput,
+    @Ctx() { req }: MyContext
+  ): Promise<CategoryResponse> {
+    const catarr = categories.categories;
+
+    if (catarr.length < 1) {
+      return {
+        errors: [
+          {
+            field: "Interests",
+            message: "Please select at least one interest.",
+          },
+        ],
+        success: false,
+      };
     }
 
-    @UseMiddleware(isAuth)
-    @Mutation(() => CategoryResponse)
-    async updateUserCategories(
-        @Arg('categories', () => CategoryInput) categories: CategoryInput,
-        @Ctx() {req}: MyContext
-    ): Promise<CategoryResponse> {
+    const { userId } = req.session;
 
-        const catarr = categories.categories;
+    const uc = await Usercategory.find({
+      where: { userId: userId, auditstat: true },
+    });
 
-        if (catarr.length < 1) {
-            return {
-                errors: [
-                    {  
-                        field: "Interests", 
-                        message: "Please select at least one interest."  
-                    }],
-                success: false
-            };
-        }
-
-        const { userId } = req.session;
-
-        const uc = await Usercategory.find({where: {userId: userId, auditstat:true}});
-
-        if (uc.length>0) {
-            // updates to false
-            await getConnection().transaction( async tm => {
-            await tm.query(`
+    if (uc.length > 0) {
+      // updates to false
+      await getConnection().transaction(async (tm) => {
+        await tm.query(
+          `
                 update usercategory
                 set auditstat = false
                 where "userId" = $1
-            `, [userId])
-            });
-
-        }
-            
-        // insert back 
-        catarr.forEach(async category => {
-            await getConnection().transaction( async tm => {
-                await tm.query(`
-                    insert into usercategory ("userId", "categoryId")
-                    values ($1, $2)
-                `, [userId, category])
-            })
-        });
-        
-        return {success: true};
+            `,
+          [userId]
+        );
+      });
     }
 
-    @UseMiddleware(isAuth)
-    @Mutation(() => CategoryResponse)
-    async updateCharityCategories(
-        @Arg('categories', () => CategoryInput) categories: CategoryInput,
-        @Arg('charityId', () => Number) charityId:number,
-        @Ctx() {req}: MyContext
-    ): Promise<CategoryResponse> {
-        
-        if (!req.session.userId) {
-            return {
-                errors: [
-                    {
-                        field: "User",
-                        message: "User is not authenticated."
-                    }
-                ],
-                success: false
-            }
-        }
+    // insert back
+    catarr.forEach(async (category) => {
+      await getConnection().transaction(async (tm) => {
+        await tm.query(
+          `
+                    insert into usercategory ("userId", "categoryId")
+                    values ($1, $2)
+                `,
+          [userId, category]
+        );
+      });
+    });
 
-        const resp = await validateCharityAdmin({charityId:charityId, userid:req.session.userId});
+    return { success: true };
+  }
 
-        if (!resp.success) {
-            return {
-                errors: resp.errors,
-                success: resp.success
-            }
-        }
+  @UseMiddleware(isAuth)
+  @Mutation(() => CategoryResponse)
+  async updateCharityCategories(
+    @Arg("categories", () => CategoryInput) categories: CategoryInput,
+    @Arg("charityId", () => Number) charityId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<CategoryResponse> {
+    if (!req.session.userId) {
+      return {
+        errors: [
+          {
+            field: "User",
+            message: "User is not authenticated.",
+          },
+        ],
+        success: false,
+      };
+    }
 
-        const charity = charityId;
+    if (!req.session.charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
 
-        const catarr = categories.categories;
+    const adids = req.session.charityAdminIds.filter((i) => i === charityId);
 
-        if (catarr.length < 1) {
-            return {
-                errors: [
-                    {  
-                        field: "Interests", 
-                        message: "Please select at least one interest."  
-                    }],
-                success: false
-            };
-        }
+    if (adids.length === 0) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
 
-        const uc = await Charitycategory.find({where: {charityId:charity, auditstat:true}});
+    const catarr = categories.categories;
 
-        if (uc.length>0) {
-            // updates to false
-            await getConnection().transaction( async tm => {
-            await tm.query(`
+    if (catarr.length < 1) {
+      return {
+        errors: [
+          {
+            field: "Interests",
+            message: "Please select at least one interest.",
+          },
+        ],
+        success: false,
+      };
+    }
+
+    const uc = await Charitycategory.find({
+      where: { charityId: charityId, auditstat: true },
+    });
+
+    if (uc.length > 0) {
+      // updates to false
+      await getConnection().transaction(async (tm) => {
+        await tm.query(
+          `
                 update charitycategory
                 set auditstat = false
                 where "charityId" = $1
-            `, [charity])
-            });
+            `,
+          [charityId]
+        );
+      });
+    }
 
-        }
-            
-        // insert back 
-        catarr.forEach(async category => {
-            await getConnection().transaction( async tm => {
-                await tm.query(`
+    // insert back
+    catarr.forEach(async (category) => {
+      await getConnection().transaction(async (tm) => {
+        await tm.query(
+          `
                     insert into charitycategory ("charityId", "categoryId")
                     values ($1, $2)
-                `, [charity, category])
-            })
-        });
-        
-        return {success: true};
-    }
+                `,
+          [charityId, category]
+        );
+      });
+    });
+
+    return { success: true };
+  }
 }

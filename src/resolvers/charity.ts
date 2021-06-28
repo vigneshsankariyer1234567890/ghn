@@ -144,8 +144,13 @@ export class CharityResolver {
   }
 
   @Query(() => Charity, { nullable: true })
-  charity(@Arg("uen", () => String) uen: string): Promise<Charity | undefined> {
+  charitySearchByUEN(@Arg("uen", () => String) uen: string): Promise<Charity | undefined> {
     return Charity.findOne({ where: { uen: uen } });
+  }
+
+  @Query(() => Charity, { nullable: true })
+  charitySearchByID(@Arg("id", () => Int) id: number): Promise<Charity | undefined> {
+    return Charity.findOne({ where: { id: id } });
   }
 
   @UseMiddleware(isAuth)
@@ -301,7 +306,18 @@ export class CharityResolver {
           success: false
         };
       }
+      return {
+        errors: [{field:"Charity", message: "Unable to create charity"}], success: false
+      }
     }
+    // inserting into charity admin keys in redis server
+    if (!charity) {
+      return { success: false, errors: [{field:"Charity", message:"Unable to create charity"}]};
+    }
+    if (!req.session.charityAdminIds) {
+      req.session.charityAdminIds = [charity.id]
+    }
+    req.session.charityAdminIds.push(charity.id);
     return { charity, success: true };
   }
 
