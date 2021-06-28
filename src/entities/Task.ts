@@ -1,14 +1,18 @@
-import { ObjectType, Field } from "type-graphql";
+import { ObjectType, Field, registerEnumType } from "type-graphql";
 import { Entity, BaseEntity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, CreateDateColumn, UpdateDateColumn } from "typeorm";
 import { Event } from "./Event";
 import { Taskvolunteer } from "./Taskvolunteer";
 
-enum TaskCompletionStatus {
+export enum TaskCompletionStatus {
     CLOSED = "completed",
     NEW = "new",
     ACTIVE = "active",
     RESOLVED = "resolved"
-}
+};
+
+registerEnumType(TaskCompletionStatus, {
+    name: "TaskCompletionStatus"
+});
 
 @ObjectType()
 @Entity()

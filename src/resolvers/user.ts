@@ -8,6 +8,7 @@ import {
   Query,
   FieldResolver,
   Root,
+  UseMiddleware,
 } from "type-graphql";
 import { MyContext } from "../types";
 import { User } from "../entities/User";
@@ -25,6 +26,14 @@ import { Charityfollow } from "../entities/Charityfollow";
 import { Charityrolelink } from "../entities/Charityrolelink";
 import { Event } from "../entities/Event";
 import { Eventlike } from "../entities/Eventlike";
+import { isAuth } from "../middleware/isAuth";
+import {
+  EventTaskContainer,
+  EventTaskContainerResponse,
+} from "../utils/cardContainers/EventTaskContainer";
+import { Eventvolunteer } from "../entities/Eventvolunteer";
+import { Task } from "../entities/Task";
+import { Taskvolunteer } from "../entities/Taskvolunteer";
 
 @ObjectType()
 export class FieldError {
@@ -358,5 +367,59 @@ export class UserResolver {
     );
 
     return true;
+  }
+
+  @Query(() => EventTaskContainerResponse)
+  @UseMiddleware(isAuth)
+  async viewTasksAssignedToMe(
+    @Ctx() { req }: MyContext
+  ): Promise<EventTaskContainerResponse> {
+    if (!req.session.userId) {
+      return { success: false };
+    }
+
+    // get the events I am part of
+    const eventarray = await getConnection()
+      .createQueryBuilder()
+      .select(`e.*`)
+      .from(Event, `e`)
+      .innerJoin(Eventvolunteer, `ev`, `e.id = ev."eventId"`)
+      .where(`e.completed = false`)
+      .andWhere(`e.auditstat = true`)
+      .andWhere(`ev."userId" = :uid`, { uid: req.session.userId })
+      .andWhere(`ev.adminapproval = 'approved'`)
+      .andWhere(`ev.auditstat = true`)
+      .andWhere(`ev."volunteeringCompleted" = false`)
+      .getRawMany<Event>();
+
+    // get the tasks assigned to me
+    const taskarray = await getConnection()
+      .createQueryBuilder()
+      .select(`t.*`)
+      .from(Task, `t`)
+      .innerJoin(Taskvolunteer, `tv`, `t.id = tv."taskId"`)
+      .where(`t.auditstat = true`)
+      .andWhere(`t.completionstatus <> 'completed'`)
+      .andWhere(`tv."userId" = :uid`, { uid: req.session.userId })
+      .andWhere(`tv.auditstat = true`)
+      .getRawMany<Task>();
+
+    // map each event to array of tasks
+    const evhashmap: Record<number, Task[]> = {};
+
+    eventarray.forEach((e) => {
+      const filteredtasks = taskarray.filter((t) => t.eventId === e.id);
+      evhashmap[e.id] = filteredtasks;
+    });
+
+    // map each event in event array to become EventTaskContainer
+    const evcontainers: EventTaskContainer[] =
+      eventarray.map<EventTaskContainer>((eve) => {
+        const tasks = evhashmap[eve.id];
+        return new EventTaskContainer(eve, tasks);
+      });
+
+    // return EventTaskContainerResponse
+    return { success: true, eventContainers: evcontainers };
   }
 }

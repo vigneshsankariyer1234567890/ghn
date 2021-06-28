@@ -17,6 +17,7 @@ import { Eventvolunteer } from "./Eventvolunteer";
 import { Eventlike } from "./Eventlike";
 import { Event } from "./Event";
 import { Charityfollow } from "./Charityfollow";
+import { Taskvolunteer } from "./Taskvolunteer";
 
 @ObjectType()
 @Entity()
@@ -56,6 +57,9 @@ export class User extends BaseEntity {
 
   @OneToMany(() => Eventvolunteer, ev => ev.user)
   volunteerActivities: Eventvolunteer[];
+
+  @OneToMany(() => Taskvolunteer, tv => tv.user)
+  taskactivities: Taskvolunteer[];
 
   @OneToMany(() => Event, ev => ev.creator)
   createdevents: Event[];

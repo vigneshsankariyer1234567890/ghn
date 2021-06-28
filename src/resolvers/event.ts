@@ -25,11 +25,12 @@ import {
 } from "../utils/cardContainers/EventInput";
 import { FieldError } from "./user";
 import { deletePosts } from "./post";
-import { Task } from "../entities/Task";
+import { Task, TaskCompletionStatus } from "../entities/Task";
 import { Charity } from "../entities/Charity";
 import { EPost, PostInput } from "../utils/cardContainers/PostInput";
 import { Post } from "../entities/Post";
-import { Eventvolunteer } from "../entities/Eventvolunteer";
+import { AdminApproval, Eventvolunteer } from "../entities/Eventvolunteer";
+import { Taskvolunteer } from "../entities/Taskvolunteer";
 
 @ObjectType()
 export class EventResponse {
@@ -109,6 +110,61 @@ export class EventResolver {
     return ev.adminapproval;
   }
 
+  @FieldResolver(() => [User], { nullable: true })
+  async currentEventVolunteers(
+    @Root() event: Event,
+    @Ctx() { req }: MyContext
+  ): Promise<User[] | null> {
+    if (!req.session.userId) {
+      return null;
+    }
+
+    return await getConnection()
+      .createQueryBuilder()
+      .select(`u.*`)
+      .from(Event, `ev`)
+      .innerJoin(Eventvolunteer, `v`, `ev.id = v."eventId"`)
+      .innerJoin(User, `u`, `v."userId" = u.id`)
+      .where(`v.adminapproval = 'approved'`)
+      .andWhere(`v.auditstat = true`)
+      .andWhere(`ev.id = :eid`, { eid: event.id })
+      .getRawMany<User>();
+  }
+
+  @FieldResolver(() => [Task], { nullable: true })
+  async eventTasks(
+    @Root() event: Event,
+    @Ctx() { req }: MyContext
+  ): Promise<Task[] | null> {
+    if (!req.session.userId) {
+      return null;
+    }
+
+    if (event.completed) {
+      return null;
+    }
+
+    const checkvolunteer = await Eventvolunteer.findOne({
+      where: {
+        eventId: event.id,
+        userId: req.session.userId,
+        auditstat: true,
+        adminapproval: AdminApproval.APPROVED,
+      },
+    });
+
+    if (!checkvolunteer) {
+      return null;
+    }
+
+    return await Task.find({
+      where: {
+        eventId: event.id,
+        auditstat: true,
+      },
+    });
+  }
+
   @Mutation(() => Boolean)
   @UseMiddleware(isAuth)
   async likeEvent(
@@ -124,8 +180,6 @@ export class EventResolver {
     // user has liked post before and unliking the post
     if (like) {
       await getConnection().transaction(async (tm) => {
-        //to change later to auditStat = 10
-
         await tm.delete(Eventlike, { userId: userId, eventId: eventId });
 
         await tm.query(
@@ -165,6 +219,7 @@ export class EventResolver {
   async events(
     @Arg("limit", () => Int) limit: number,
     @Arg("sortByLikes") sortByLikes: boolean,
+    @Arg("sortByUpcoming") sortByUpcoming: boolean,
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null
   ): Promise<PaginatedEvents> {
     const realLimit = Math.min(50, limit);
@@ -184,8 +239,9 @@ export class EventResolver {
     where e.auditstat = TRUE
     ${cursor ? `and e."updatedAt" < $2` : ""}
     order by 
+        ${sortByUpcoming ? `e."dateStart" DESC,` : ""}
         ${sortByLikes ? `e."likeNumber" DESC,` : ""} 
-        e."createdAt" DESC
+        e."dateStart" DESC
     limit $1
     `,
       replacements
@@ -195,6 +251,62 @@ export class EventResolver {
       events: events.slice(0, realLimit),
       hasMore: events.length === realLimitPlusOne,
     };
+  }
+
+  @Query(() => PaginatedEvents)
+  async eventsByCategories(
+    @Arg("limit", () => Int) limit: number,
+    @Arg("sortByLikes") sortByLikes: boolean,
+    @Arg("sortByUpcoming") sortByUpcoming: boolean,
+    @Arg("categories", () => [Number]) categories: number[],
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null
+  ): Promise<PaginatedEvents> {
+
+    const realLimit = Math.min(50, limit);
+    const realLimitPlusOne = realLimit + 1;
+
+    const replacements: any[] = [realLimitPlusOne];
+
+    const catcsv = categories
+        .reduce<string>((a, b) => a + b + `,`, ``)
+        .slice(0, -1);
+    replacements.push(catcsv);
+
+    if (cursor) {
+      replacements.push(new Date(parseInt(cursor))); //cursor null at first
+    }
+
+    // actual query
+    const events = await getConnection().query(
+      `
+      SELECT ev.* FROM (
+        SELECT DISTINCT char.* 
+        FROM charitycategory cc
+        INNER JOIN 
+        (SELECT id FROM unnest(string_to_array( $2, ',')::int[]) AS id
+        ) cat
+        ON cat.id = cc."categoryId"
+        FULL JOIN charity char ON char.id = cc."charityId"
+        WHERE cc.auditstat = TRUE
+      ) charities
+      inner join event ev on charities.id = ev."charityId"
+      where ev.auditstat = TRUE
+      ${cursor ? `and ev."updatedAt" < $3` : ""}
+      order by 
+        ${sortByUpcoming ? `ev."dateStart" DESC,` : ""}
+        ${sortByLikes ? `ev."likeNumber" DESC,` : ""} 
+        ev."dateStart" DESC
+      limit $1;
+      `,
+      replacements
+    );
+
+    return {
+      events: events.slice(0, realLimit),
+      hasMore: events.length === realLimitPlusOne,
+    };
+
+
   }
 
   @Query(() => Event, { nullable: true })
@@ -370,6 +482,15 @@ export class EventResolver {
       };
     }
 
+    if (!req.session.charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
+
     const ev = await Event.findOne({ where: { id: id, auditstat: true } });
 
     if (!ev) {
@@ -385,15 +506,6 @@ export class EventResolver {
     }
 
     const charityId = ev.charityId;
-
-    if (!req.session.charityAdminIds) {
-      return {
-        errors: [
-          { field: "Charity", message: "User is not an admin of charity." },
-        ],
-        success: false,
-      };
-    }
 
     const adids = req.session.charityAdminIds.filter((i) => i === charityId);
 
@@ -544,5 +656,131 @@ export class EventResolver {
     };
 
     return { success: true, epost: epost };
+  }
+
+  @UseMiddleware(isAuth)
+  @Mutation(() => EventResponse)
+  async markEventAsComplete(
+    @Arg("id") id: number,
+    @Ctx() { req }: MyContext
+  ): Promise<EventResponse> {
+    // check credentials
+
+    if (!req.session.userId) {
+      return {
+        errors: [
+          {
+            field: "User",
+            message: "User is not authenticated.",
+          },
+        ],
+        success: false,
+      };
+    }
+
+    if (!req.session.charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
+
+    const ev = await Event.findOne({ where: { id: id, auditstat: true } });
+
+    if (!ev) {
+      return {
+        errors: [
+          {
+            field: "Event",
+            message: "That event does not exist.",
+          },
+        ],
+        success: false,
+      };
+    }
+
+    const charityId = ev.charityId;
+
+    const adids = req.session.charityAdminIds.filter((i) => i === charityId);
+
+    if (adids.length === 0) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
+
+    try {
+      // mark Event as completed
+      await getConnection().transaction(async (tm) => {
+        tm.createQueryBuilder()
+          .update(Event)
+          .set({ completed: true })
+          .where({ id: id })
+          .execute();
+      });
+
+      // mark eventVolunteers as completed where approved already
+      await getConnection().transaction(async (tm) => {
+        tm.createQueryBuilder()
+          .update(Eventvolunteer)
+          .set({ volunteeringCompleted: true })
+          .where(`"eventId" = :eid`, { eid: id })
+          .andWhere(`auditstat = true`)
+          .andWhere(`adminapproval = 'approved'`)
+          .execute();
+      });
+
+      // mark eventVolunteers as rejected where pending approval already
+      await getConnection().transaction(async (tm) => {
+        tm.createQueryBuilder()
+          .update(Eventvolunteer)
+          .set({ adminapproval: AdminApproval.REJECTED })
+          .where(`"eventId" = :eid`, { eid: id })
+          .andWhere(`auditstat = true`)
+          .andWhere(`adminapproval = 'rejected'`)
+          .execute();
+      });
+
+      const taskids = await getConnection()
+        .createQueryBuilder()
+        .select(`t.*`)
+        .from(Event, `ev`)
+        .innerJoin(Task, `t`, `ev.id = t."eventId"`)
+        .where(`ev.id = :evid`, { evid: id })
+        .getRawMany<Task>()
+        .then((t) => t.map((i) => i.id));
+
+      // mark tasks as completed
+      await getConnection().transaction(async (tm) => {
+        tm.createQueryBuilder()
+          .update(Task)
+          .set({ completionstatus: TaskCompletionStatus.CLOSED })
+          .where(`"eventId" = :eid`, { eid: id })
+          .andWhere(`auditstat = true`)
+          .execute();
+      });
+
+      // mark taskvolunteers as deleted
+      await getConnection().transaction(async (tm) => {
+        tm.createQueryBuilder()
+          .update(Taskvolunteer)
+          .set({ auditstat: false })
+          .where(`"taskId" in {:...tid}`, { tid: taskids })
+          .andWhere(`auditstat = true`)
+          .execute();
+      });
+    } catch (err) {
+      return {
+        success: false,
+        errors: [{ field: "DB", message: "Unable to mark event as complete." }],
+      };
+    }
+
+    return { success: true, event: ev };
   }
 }

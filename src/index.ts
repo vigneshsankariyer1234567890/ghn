@@ -40,6 +40,8 @@ import { createCharityLoader } from "./utils/dataloaders/createCharityLoader";
 import { Charityfollow } from "./entities/Charityfollow";
 import { createEventLoader } from "./utils/dataloaders/createEventLoader";
 import { EventvolunteerResolver } from "./resolvers/eventVolunteer";
+import { TaskResolver } from "./resolvers/task";
+import { TaskVolunteerResolver } from "./resolvers/taskVolunteer";
 
 const main = async () => {
   const conn = await createConnection({
@@ -112,7 +114,7 @@ const main = async () => {
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
       resolvers: [HelloResolver, PostResolver, UserResolver, CategoryResolver
-        , CharityResolver, EventResolver, EventvolunteerResolver],
+        , CharityResolver, EventResolver, EventvolunteerResolver, TaskResolver, TaskVolunteerResolver],
       validate: false,
     }),
     context: ({ req, res }): MyContext => ({

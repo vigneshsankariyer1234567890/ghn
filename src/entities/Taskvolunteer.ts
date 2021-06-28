@@ -1,7 +1,7 @@
 import { ObjectType, Field } from "type-graphql";
 import { Entity, BaseEntity, PrimaryGeneratedColumn, Column, ManyToOne } from "typeorm";
-import { Eventvolunteer } from "./Eventvolunteer";
 import { Task } from "./Task";
+import { User } from "./User";
 
 @ObjectType()
 @Entity()
@@ -15,13 +15,13 @@ export class Taskvolunteer extends BaseEntity {
     taskId: number;
 
     @ManyToOne(() => Task, task => task.taskvolunteers)
-    task: Task;
+    task: Task; 
 
     @Column()
-    eventvolunteerId: number;
+    userId: number;
 
-    @ManyToOne(() => Eventvolunteer, ev => ev.taskvolunteers)
-    eventvolunteer: Eventvolunteer;
+    @ManyToOne(() => User, u => u.taskactivities)
+    user: User;
 
     @Column({type: "boolean", default:true})
     auditstat!: boolean
