@@ -13,7 +13,7 @@ export const createTaskVolunteerListLoader = () =>
     const tvolun = await createQueryBuilder()
       .select()
       .from(Taskvolunteer, `tv`)
-      .where(sqlquerystring)
+      .where(`(`+sqlquerystring+`)`)
       .andWhere(`tv.auditstat = true`)
       .getRawMany<Taskvolunteer>();
 

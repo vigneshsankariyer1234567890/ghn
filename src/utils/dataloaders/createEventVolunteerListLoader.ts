@@ -15,7 +15,7 @@ export const createEventVolunteerListLoader = (
     const evolun = await createQueryBuilder()
       .select()
       .from(Eventvolunteer, `ev`)
-      .where(sqlquerystring)
+      .where(`(`+sqlquerystring+`)`)
       .andWhere(`ev.auditstat = true`)
       .getRawMany<Eventvolunteer>();
 

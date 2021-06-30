@@ -112,7 +112,7 @@ export class TaskVolunteerResolver {
       };
     }
 
-    await Taskvolunteer.create({ taskId: taskId, userId: userId });
+    await Taskvolunteer.create({ taskId: taskId, userId: userId }).save();
 
     return { success: true };
   }

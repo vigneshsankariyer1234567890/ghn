@@ -6,7 +6,7 @@ export class TaskVolunteerResponse {
     @Field(() => Boolean)
     success!: boolean;
 
-    @Field(() => [FieldError])
+    @Field(() => [FieldError], {nullable: true})
     errors?: FieldError[];
 
 }
