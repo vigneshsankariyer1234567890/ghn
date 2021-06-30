@@ -1,17 +1,17 @@
 import {MigrationInterface, QueryRunner} from "typeorm";
 
-export class ReinitialisedTables1624801539483 implements MigrationInterface {
-    name = 'ReinitialisedTables1624801539483'
+export class ReinitialiseTables1624973501938 implements MigrationInterface {
+    name = 'ReinitialiseTables1624973501938'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`CREATE TABLE "like" ("userId" integer NOT NULL, "postId" integer NOT NULL, CONSTRAINT "PK_78a9f4a1b09b6d2bf7ed85f252f" PRIMARY KEY ("userId", "postId"))`);
         await queryRunner.query(`CREATE TABLE "charitycategory" ("id" SERIAL NOT NULL, "charityId" integer NOT NULL, "categoryId" integer NOT NULL, "auditstat" boolean NOT NULL DEFAULT true, CONSTRAINT "PK_951d8cc3c18363a29fd2c545700" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE TABLE "charityfollow" ("id" SERIAL NOT NULL, "charityId" integer NOT NULL, "userId" integer NOT NULL, "auditstat" boolean NOT NULL DEFAULT true, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "udpatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_7022780bcc7e23235c945e9a65f" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE TABLE "eventlike" ("userId" integer NOT NULL, "eventId" integer NOT NULL, CONSTRAINT "PK_e5270074c12c7736c143f5996f2" PRIMARY KEY ("userId", "eventId"))`);
-        await queryRunner.query(`CREATE TABLE "taskvolunteer" ("id" SERIAL NOT NULL, "taskId" integer NOT NULL, "eventvolunteerId" integer NOT NULL, "auditstat" boolean NOT NULL DEFAULT true, CONSTRAINT "PK_5849efc4bdd687c5cb3690752b1" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "taskvolunteer" ("id" SERIAL NOT NULL, "taskId" integer NOT NULL, "userId" integer NOT NULL, "auditstat" boolean NOT NULL DEFAULT true, CONSTRAINT "PK_5849efc4bdd687c5cb3690752b1" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE TYPE "task_completionstatus_enum" AS ENUM('completed', 'new', 'active', 'resolved')`);
         await queryRunner.query(`CREATE TABLE "task" ("id" SERIAL NOT NULL, "eventId" integer NOT NULL, "description" text NOT NULL, "deadline" TIMESTAMP NOT NULL, "auditstat" boolean NOT NULL DEFAULT true, "completionstatus" "task_completionstatus_enum" NOT NULL DEFAULT 'new', "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_fb213f79ee45060ba925ecd576e" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE TABLE "event" ("id" SERIAL NOT NULL, "name" character varying NOT NULL, "description" text NOT NULL, "dateStart" TIMESTAMP NOT NULL, "dateEnd" TIMESTAMP NOT NULL, "charityId" integer NOT NULL, "creatorId" integer NOT NULL, "likeNumber" integer NOT NULL DEFAULT '0', "completed" boolean NOT NULL DEFAULT false, "auditstat" boolean NOT NULL DEFAULT true, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_30c2f3bbaf6d34a55f8ae6e4614" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "event" ("id" SERIAL NOT NULL, "name" character varying NOT NULL, "description" text NOT NULL, "dateStart" TIMESTAMP NOT NULL, "dateEnd" TIMESTAMP NOT NULL, "venue" text NOT NULL DEFAULT '', "charityId" integer NOT NULL, "creatorId" integer NOT NULL, "likeNumber" integer NOT NULL DEFAULT '0', "completed" boolean NOT NULL DEFAULT false, "auditstat" boolean NOT NULL DEFAULT true, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_30c2f3bbaf6d34a55f8ae6e4614" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE TYPE "eventvolunteer_adminapproval_enum" AS ENUM('pending', 'approved', 'rejected')`);
         await queryRunner.query(`CREATE TABLE "eventvolunteer" ("id" SERIAL NOT NULL, "eventId" integer NOT NULL, "userId" integer NOT NULL, "adminapproval" "eventvolunteer_adminapproval_enum" NOT NULL DEFAULT 'pending', "userroleId" integer NOT NULL, "auditstat" boolean NOT NULL DEFAULT true, "volunteeringCompleted" boolean NOT NULL DEFAULT false, CONSTRAINT "PK_344280cbed72a704dc244309582" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE TABLE "userrole" ("id" SERIAL NOT NULL, "roleName" character varying NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "udpatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_e4f773b34499eded638ce5fe26b" PRIMARY KEY ("id"))`);
@@ -31,7 +31,7 @@ export class ReinitialisedTables1624801539483 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "eventlike" ADD CONSTRAINT "FK_0ad234fcb04d46678f327242d80" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "eventlike" ADD CONSTRAINT "FK_9a047684889dffdc07bbb8ef0df" FOREIGN KEY ("eventId") REFERENCES "event"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "taskvolunteer" ADD CONSTRAINT "FK_e480ef3eb437fefc70db271c80d" FOREIGN KEY ("taskId") REFERENCES "task"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "taskvolunteer" ADD CONSTRAINT "FK_5415d009665c9c1d557c3fde78a" FOREIGN KEY ("eventvolunteerId") REFERENCES "eventvolunteer"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "taskvolunteer" ADD CONSTRAINT "FK_702c9ebb17d05357aca05e2c53a" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "task" ADD CONSTRAINT "FK_46bcf7c0773a6ce029ea42be59f" FOREIGN KEY ("eventId") REFERENCES "event"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "event" ADD CONSTRAINT "FK_d1ae8a8c3e31ab31f362cd45baf" FOREIGN KEY ("charityId") REFERENCES "charity"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "event" ADD CONSTRAINT "FK_7a773352fcf1271324f2e5a3e41" FOREIGN KEY ("creatorId") REFERENCES "user"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
@@ -67,7 +67,7 @@ export class ReinitialisedTables1624801539483 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "event" DROP CONSTRAINT "FK_7a773352fcf1271324f2e5a3e41"`);
         await queryRunner.query(`ALTER TABLE "event" DROP CONSTRAINT "FK_d1ae8a8c3e31ab31f362cd45baf"`);
         await queryRunner.query(`ALTER TABLE "task" DROP CONSTRAINT "FK_46bcf7c0773a6ce029ea42be59f"`);
-        await queryRunner.query(`ALTER TABLE "taskvolunteer" DROP CONSTRAINT "FK_5415d009665c9c1d557c3fde78a"`);
+        await queryRunner.query(`ALTER TABLE "taskvolunteer" DROP CONSTRAINT "FK_702c9ebb17d05357aca05e2c53a"`);
         await queryRunner.query(`ALTER TABLE "taskvolunteer" DROP CONSTRAINT "FK_e480ef3eb437fefc70db271c80d"`);
         await queryRunner.query(`ALTER TABLE "eventlike" DROP CONSTRAINT "FK_9a047684889dffdc07bbb8ef0df"`);
         await queryRunner.query(`ALTER TABLE "eventlike" DROP CONSTRAINT "FK_0ad234fcb04d46678f327242d80"`);
