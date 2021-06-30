@@ -10,7 +10,6 @@ import {
 } from "type-graphql";
 import { getConnection } from "typeorm";
 import { Event } from "../entities/Event";
-import { Eventvolunteer } from "../entities/Eventvolunteer";
 import { Task, TaskCompletionStatus } from "../entities/Task";
 import { Taskvolunteer } from "../entities/Taskvolunteer";
 import { User } from "../entities/User";
@@ -23,31 +22,25 @@ export class TaskResolver {
   @FieldResolver(() => [User], { nullable: true })
   async volunteersAssigned(
     @Root() task: Task,
-    @Ctx() { req }: MyContext
-  ): Promise<User[] | null> {
+    @Ctx() { req, eventVolunteerLoader, taskVolunteerListLoader, userLoader }: MyContext
+  ): Promise<(User|Error)[] | null> {
     if (!req.session.userId) {
       return null;
     }
 
-    const ev = await Eventvolunteer.findOne({
-      where: {
-        eventId: task.eventId,
-        userId: req.session.userId,
-        auditstat: true,
-      },
-    });
+    const ev = await eventVolunteerLoader.load({eventId: task.eventId, userId: req.session.userId})
 
     if (!ev) {
       return null;
     }
 
-    return getConnection()
-      .createQueryBuilder()
-      .select(`u.*`)
-      .from(User, `u`)
-      .innerJoin(Taskvolunteer, `tv`, `u.id = tv."userId"`)
-      .where(`tv.auditstat = true`)
-      .getRawMany<User>();
+    const tv = await taskVolunteerListLoader.load(task.id);
+
+    if (!tv) {
+      return null;
+    }
+
+    return userLoader.loadMany(tv.map(t => t.userId));
   }
 
   @Mutation(() => TaskResponse)

@@ -23,9 +23,9 @@ export class TaskResponse {
     @Field(() => Boolean)
     success!: boolean;
 
-    @Field(() => [FieldError])
+    @Field(() => [FieldError], {nullable: true})
     errors?: FieldError[];
 
-    @Field(() => Task)
+    @Field(() => Task, {nullable: true})
     task?: Task;
 }

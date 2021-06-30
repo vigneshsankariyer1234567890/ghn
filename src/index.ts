@@ -42,20 +42,24 @@ import { createEventLoader } from "./utils/dataloaders/createEventLoader";
 import { EventvolunteerResolver } from "./resolvers/eventVolunteer";
 import { TaskResolver } from "./resolvers/task";
 import { TaskVolunteerResolver } from "./resolvers/taskVolunteer";
+import { createEventVolunteerLoader } from "./utils/dataloaders/createEventVolunteerLoader";
+import { createEventVolunteerListLoader } from "./utils/dataloaders/createEventVolunteerListLoader";
+import { createTaskListLoader } from "./utils/dataloaders/createTaskListLoader";
+import { createTaskVolunteerListLoader } from "./utils/dataloaders/createTaskVolunteerListLoader";
 
 const main = async () => {
   const conn = await createConnection({
     type: "postgres",
     url: process.env.DATABASE_URL,
     logging: true,
-    // synchronize: true,
+    synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
     entities: [Post, User, Like, Usercategory, Category, Charity
       , Charitycategory, Charityrolelink, Userrole, Event, Posteventlink, Eventvolunteer, Task
       , Taskvolunteer, Eventlike, Charityfollow],
   });
 
-  await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
+  // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
   // await Charity.delete({});
   // await conn.createQueryBuilder()
   //           .update(Post)
@@ -126,7 +130,10 @@ const main = async () => {
       categoryLoader: createCategoryLoader(),
       eventLikeLoader: createEventLikesLoader(),
       charityLoader: createCharityLoader(),
-      eventLoader: createEventLoader()
+      eventLoader: createEventLoader(),
+      eventVolunteerLoader: createEventVolunteerLoader(),
+      userTaskListLoader: createTaskListLoader(),
+      taskVolunteerListLoader: createTaskVolunteerListLoader()
     }),
     playground: true,
     introspection: true

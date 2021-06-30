@@ -31,6 +31,7 @@ import { EPost, PostInput } from "../utils/cardContainers/PostInput";
 import { Post } from "../entities/Post";
 import { AdminApproval, Eventvolunteer } from "../entities/Eventvolunteer";
 import { Taskvolunteer } from "../entities/Taskvolunteer";
+import { createEventVolunteerListLoader } from "../utils/dataloaders/createEventVolunteerListLoader";
 
 @ObjectType()
 export class EventResponse {
@@ -58,6 +59,11 @@ class EventPostResponse {
 
 @Resolver(Event)
 export class EventResolver {
+  // instantiate dataloader with the right adminapproval list
+  private static approvedEventDataLoader = createEventVolunteerListLoader([
+    AdminApproval.APPROVED,
+  ]);
+
   @FieldResolver(() => String)
   textSnippet(@Root() event: Event) {
     return event.description.slice(0, 50);
@@ -90,17 +96,18 @@ export class EventResolver {
     return like ? 1 : null;
   }
 
-  @FieldResolver(() => String, { nullable: true })
+  @FieldResolver(() => AdminApproval, { nullable: true })
   async approvalStatus(
     @Root() event: Event,
-    @Ctx() { req }: MyContext
-  ): Promise<string | null> {
+    @Ctx() { req, eventVolunteerLoader }: MyContext
+  ): Promise<AdminApproval | null> {
     if (!req.session.userId) {
       return null;
     }
 
-    const ev = await Eventvolunteer.findOne({
-      where: { eventId: event.id, userId: req.session.userId, auditstat: true },
+    const ev = await eventVolunteerLoader.load({
+      eventId: event.id,
+      userId: req.session.userId,
     });
 
     if (!ev) {
@@ -113,28 +120,25 @@ export class EventResolver {
   @FieldResolver(() => [User], { nullable: true })
   async currentEventVolunteers(
     @Root() event: Event,
-    @Ctx() { req }: MyContext
-  ): Promise<User[] | null> {
+    @Ctx() { req, userLoader }: MyContext
+  ): Promise<(User | Error)[] | null> {
     if (!req.session.userId) {
       return null;
     }
 
-    return await getConnection()
-      .createQueryBuilder()
-      .select(`u.*`)
-      .from(Event, `ev`)
-      .innerJoin(Eventvolunteer, `v`, `ev.id = v."eventId"`)
-      .innerJoin(User, `u`, `v."userId" = u.id`)
-      .where(`v.adminapproval = 'approved'`)
-      .andWhere(`v.auditstat = true`)
-      .andWhere(`ev.id = :eid`, { eid: event.id })
-      .getRawMany<User>();
+    // get list of eventvolunteers
+    const evs = await EventResolver.approvedEventDataLoader.load(event.id);
+    if (!evs) {
+      return null;
+    }
+    // get list of users
+    return userLoader.loadMany(evs.map((ev) => ev.userId));
   }
 
   @FieldResolver(() => [Task], { nullable: true })
   async eventTasks(
     @Root() event: Event,
-    @Ctx() { req }: MyContext
+    @Ctx() { req, userTaskListLoader, eventVolunteerLoader }: MyContext
   ): Promise<Task[] | null> {
     if (!req.session.userId) {
       return null;
@@ -144,25 +148,20 @@ export class EventResolver {
       return null;
     }
 
-    const checkvolunteer = await Eventvolunteer.findOne({
-      where: {
-        eventId: event.id,
-        userId: req.session.userId,
-        auditstat: true,
-        adminapproval: AdminApproval.APPROVED,
-      },
+    const ev = await eventVolunteerLoader.load({
+      eventId: event.id,
+      userId: req.session.userId,
     });
 
-    if (!checkvolunteer) {
+    if (!ev) {
       return null;
     }
 
-    return await Task.find({
-      where: {
-        eventId: event.id,
-        auditstat: true,
-      },
-    });
+    if (ev.adminapproval !== AdminApproval.APPROVED) {
+      return null;
+    }
+
+    return await userTaskListLoader.load(event.id);
   }
 
   @Mutation(() => Boolean)
@@ -261,15 +260,14 @@ export class EventResolver {
     @Arg("categories", () => [Number]) categories: number[],
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null
   ): Promise<PaginatedEvents> {
-
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
 
     const replacements: any[] = [realLimitPlusOne];
 
     const catcsv = categories
-        .reduce<string>((a, b) => a + b + `,`, ``)
-        .slice(0, -1);
+      .reduce<string>((a, b) => a + b + `,`, ``)
+      .slice(0, -1);
     replacements.push(catcsv);
 
     if (cursor) {
@@ -305,8 +303,6 @@ export class EventResolver {
       events: events.slice(0, realLimit),
       hasMore: events.length === realLimitPlusOne,
     };
-
-
   }
 
   @Query(() => Event, { nullable: true })

@@ -1,4 +1,4 @@
-import { Field, ObjectType } from "type-graphql";
+import { Field, ObjectType, registerEnumType } from "type-graphql";
 import { Entity, BaseEntity, Column, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { Event } from "./Event";
 import { User } from "./User";
@@ -9,6 +9,10 @@ export enum AdminApproval {
     APPROVED = "approved",
     REJECTED = "rejected"
 }
+
+registerEnumType(AdminApproval, {
+    name: "AdminApproval"
+});
 
 @ObjectType()
 @Entity()
