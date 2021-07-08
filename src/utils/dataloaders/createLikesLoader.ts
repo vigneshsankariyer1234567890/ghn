@@ -1,8 +1,11 @@
-import { Like } from "../entities/Like";
+import { Like } from "../../entities/Like";
 import DataLoader from "dataloader";
 
 // [{postId: 5, userId: 10}]
 // [{postId: 5, userId: 10, value: 1}]
+
+
+
 export const createLikesLoader = () =>
   new DataLoader<{ postId: number; userId: number }, Like | null>(
     async (keys) => {

@@ -1,12 +1,9 @@
 import {
   Arg,
   Ctx,
-  Field,
   FieldResolver,
-  InputType,
   Int,
   Mutation,
-  ObjectType,
   Query,
   Resolver,
   Root,
@@ -18,22 +15,12 @@ import { Like } from "../entities/Like";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
-
-@InputType()
-class PostInput {
-  @Field()
-  title: string;
-  @Field()
-  text: string;
-}
-
-@ObjectType()
-class PaginatedPosts {
-  @Field(() => [Post])
-  posts: Post[];
-  @Field()
-  hasMore: boolean;
-}
+import {
+  PaginatedPosts,
+  PostInput,
+  EPost,
+} from "../utils/cardContainers/PostInput";
+import { Posteventlink } from "../entities/Posteventlink";
 
 @Resolver(Post)
 export class PostResolver {
@@ -63,32 +50,27 @@ export class PostResolver {
 
   @Mutation(() => Boolean)
   @UseMiddleware(isAuth)
-  async like(
+  async likePost(
     @Arg("postId", () => Int) postId: number,
     @Ctx() { req }: MyContext
   ) {
     const { userId } = req.session;
 
-    const like = await Like.findOne({ where: { postId, userId, auditstat:true } });
+    const like = await Like.findOne({ where: { postId, userId } });
 
     // user has liked post before and unliking the post
     if (like) {
       await getConnection().transaction(async (tm) => {
         //to change later to auditStat = 10
-        await tm.query(
-          `
-                update "like" 
-                set auditstat = false
-                where id = $1
-            `,
-          [like.id]
-        );
+
+        await tm.delete(Like, { userId: userId, postId: postId });
 
         await tm.query(
           `
                 update post 
                 set "likeNumber" = "likeNumber" - 1
                 where id = $1
+                and "likeNumber">0
             `,
           [postId]
         );
@@ -96,13 +78,12 @@ export class PostResolver {
     } else if (!like) {
       //has never liked before
       await getConnection().transaction(async (tm) => {
-        await tm.query(
-          `
-            insert into "like" ("userId", "postId", auditstat)
-            values ($1, $2, $3)
-          `,
-          [userId, postId, true]
-        );
+        await tm
+          .createQueryBuilder()
+          .insert()
+          .into(Like)
+          .values({ userId: userId, postId: postId })
+          .execute();
 
         await tm.query(
           `
@@ -114,57 +95,83 @@ export class PostResolver {
         );
       });
     }
-    return (like) ? false : true;
+    return like ? false : true;
   }
 
   @Query(() => PaginatedPosts)
   async posts(
     @Arg("limit", () => Int) limit: number,
+    // @Arg("sortByLikes") sortByLikes: boolean,
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
 
-    const replacements: any[] = [realLimitPlusOne];
+    let date: Date;
 
     if (cursor) {
-      replacements.push(new Date(parseInt(cursor))); //cursor null at first
+      date = new Date(parseInt(cursor));
+    } else {
+      date = new Date(Date.now());
+      date = new Date(date.setHours(date.getHours() + 8));
     }
 
     // actual query
-    const posts = await getConnection().query(
-      `
-    select p.*
-    from post p 
+    const posts = await getConnection()
+      .createQueryBuilder(Post, `po`)
+      .select(`po.*`)
+      .where(`po.auditstat = true`)
+      .andWhere(`po."updatedAt" < :cursor::timestamp`, { cursor: date })
+      .orderBy(`po."updatedAt"`, `DESC`)
+      .limit(realLimitPlusOne)
+      .getRawMany<Post>();
 
-    ${cursor ? `where p."createdAt" < $2` : ""}
-    order by p."createdAt" DESC
-    limit $1
-    `,
-      replacements
-    );
+    const eposts = await PaginatedPosts.convertPostsToEPosts(posts);
 
     return {
-      posts: posts.slice(0, realLimit),
+      posts: eposts.slice(0, realLimit),
       hasMore: posts.length === realLimitPlusOne,
     };
   }
 
-  @Query(() => Post, { nullable: true })
-  post(@Arg("id", () => Int) id: number): Promise<Post | undefined> {
-    return Post.findOne(id);
+  @Query(() => EPost, { nullable: true })
+  async post(@Arg("id", () => Int) id: number): Promise<EPost | undefined> {
+    const p = await Post.findOne(id);
+    if (!p) {
+      return undefined;
+    }
+    if (!p.isEvent) {
+      return { post: p, isEvent: p.isEvent };
+    }
+    const eventinfo = await getConnection()
+      .createQueryBuilder()
+      .select('pel."postId"', "postid")
+      .addSelect('pel."eventId"')
+      .addSelect('pel."eventName"')
+      .from(Post, "po")
+      .leftJoin(Posteventlink, "pel", 'pel."postId" = po.id')
+      .where("po.id IN (:...ids)", { ids: [p.id] })
+      .getRawOne<{ postid: number; eventId?: number; eventName?: string }>();
+
+    return {
+      post: p,
+      isEvent: p.isEvent,
+      eventId: eventinfo.eventId,
+      eventName: eventinfo.eventName,
+    };
   }
 
-  @Mutation(() => Post)
+  @Mutation(() => EPost)
   @UseMiddleware(isAuth)
   async createPost(
     @Arg("input") input: PostInput,
     @Ctx() { req }: MyContext
-  ): Promise<Post> {
-    return Post.create({
+  ): Promise<EPost> {
+    const p = await Post.create({
       ...input,
       creatorId: req.session.userId,
     }).save();
+    return { post: p, isEvent: false };
   }
 
   @Mutation(() => Post, { nullable: true })
@@ -187,8 +194,6 @@ export class PostResolver {
       .execute();
 
     return result.raw[0];
-
-    // return Post.update({ id, creatorId: req.session.userId }, { title, text});
   }
 
   @Mutation(() => Boolean)
@@ -197,20 +202,74 @@ export class PostResolver {
     @Arg("id") id: number,
     @Ctx() { req }: MyContext
   ): Promise<boolean> {
-    // not cascade way
-    // const post = await Post.findOne(id)
-    // if (!post) {
-    //     return false;
-    // }
-    // if (post.creatorId !== req.session.userId) {
-    //     throw new Error('not authorized');
-    // }
-    // await Like.delete({ postId: id});
-    // await Post.delete({ id, creatorId: req.session.userId});
+    await getConnection().transaction(async (tm) => {
+      tm.query(
+        `
+        update post 
+        set auditstat = false
+        where id = $1 and "creatorId" = $2
+      `,
+        [id, req.session.userId]
+      );
+    });
 
-    // cascade
-    await Post.delete({ id, creatorId: req.session.userId });
+    await getConnection().transaction(async (tm) => {
+      await tm
+        .createQueryBuilder()
+        .delete()
+        .from(Like, `l`)
+        .where(`l."postId" = :post`, { post: id })
+        .execute();
+    });
+
+    await getConnection().transaction(async (tm) => {
+      tm.query(
+        `
+        update posteventlink 
+        set auditstat = false
+        where "postId" = $1
+      `,
+        [id]
+      );
+    });
 
     return true;
   }
+}
+
+export async function deletePosts(postIds: number[]): Promise<void> {
+  await getConnection().transaction(async (tm) => {
+    tm.query(
+      `
+    UPDATE "post" AS p 
+    SET auditstat = false
+    FROM (select unnest(string_to_array($1,',')::int[]) as postId ) AS pid
+    WHERE p.id = pid.postId
+    `,
+      [postIds.reduce<string>((a, b) => a + b + `,`, ``).slice(0, -1)]
+    );
+  });
+
+  await getConnection().transaction(async (tm) => {
+    await tm
+      .createQueryBuilder()
+      .delete()
+      .from(Like, `l`)
+      .where(`l."postId" in (:posts)`, { posts: postIds })
+      .execute();
+  });
+
+  await getConnection().transaction(async (tm) => {
+    tm.query(
+      `
+    UPDATE posteventlink AS pel 
+    SET auditstat = false
+    FROM (select unnest(string_to_array($1,',')::int[]) as postId ) AS pid
+    WHERE pel."postId" = pid.postId
+    `,
+      [postIds.reduce<string>((a, b) => a + b + `,`, ``).slice(0, -1)]
+    );
+  });
+
+  return;
 }

@@ -11,6 +11,7 @@ import {
 } from "typeorm";
 import { User } from "./User";
 import { Like } from "./Like";
+import { Posteventlink } from "./Posteventlink";
 
 @ObjectType()
 @Entity()
@@ -47,10 +48,16 @@ export class Post extends BaseEntity {
   @OneToMany(() => Like, (like) => like.post)
   likes: Like[];
 
+  @OneToMany(() => Posteventlink, pel => pel.post)
+  posteventlinks: Posteventlink[]
+
   @Field(() => Boolean)
-  @Column({type: "boolean", default:false})
+  @Column({type: "boolean", default:true})
   auditstat!: boolean;
 
+  @Field(() => Boolean)
+  @Column({type: "boolean", default:false})
+  isEvent!: boolean;
 
   @Field(() => String)
   @CreateDateColumn()

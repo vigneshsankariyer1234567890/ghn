@@ -13,6 +13,11 @@ import { Like } from "./Like";
 import { Usercategory } from "./Usercategory";
 import { Charity } from "./Charity";
 import { Charityrolelink } from "./Charityrolelink"
+import { Eventvolunteer } from "./Eventvolunteer";
+import { Eventlike } from "./Eventlike";
+import { Event } from "./Event";
+import { Charityfollow } from "./Charityfollow";
+import { Taskvolunteer } from "./Taskvolunteer";
 
 @ObjectType()
 @Entity()
@@ -38,6 +43,9 @@ export class User extends BaseEntity {
   @OneToMany(() => Like, (like) => like.user)
   likes: Like[];
 
+  @OneToMany(() => Eventlike, (ev) => ev.user)
+  eventlikes: Eventlike[];
+
   @OneToMany(() => Usercategory, (uc) => uc.user)
   usercategories: Usercategory[];
 
@@ -45,7 +53,19 @@ export class User extends BaseEntity {
   charitycreator: Charity[];
 
   @OneToMany(() => Charityrolelink, crl => crl.user)
-  charityRoleLinks: Charityrolelink[]
+  charityRoleLinks: Charityrolelink[];
+
+  @OneToMany(() => Eventvolunteer, ev => ev.user)
+  volunteerActivities: Eventvolunteer[];
+
+  @OneToMany(() => Taskvolunteer, tv => tv.user)
+  taskactivities: Taskvolunteer[];
+
+  @OneToMany(() => Event, ev => ev.creator)
+  createdevents: Event[];
+
+  @OneToMany(() => Charityfollow, cf => cf.user)
+  followedCharities: Charityfollow[];
 
   @Field(() => String)
   @CreateDateColumn()

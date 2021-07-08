@@ -16,18 +16,36 @@ import { createConnection } from "typeorm";
 import { User } from "./entities/User";
 import { Post } from "./entities/Post";
 import { Like } from "./entities/Like";
-import { createUserLoader } from "./utils/createUserLoader";
-import { createLikesLoader } from "./utils/createLikesLoader";
+import { createUserLoader } from "./utils/dataloaders/createUserLoader";
+import { createLikesLoader } from "./utils/dataloaders/createLikesLoader";
 import path from "path";
 import { Usercategory } from "./entities/Usercategory";
 import { Category } from "./entities/Category";
 import { CategoryResolver } from "./resolvers/category";
-import { createCategoryLoader } from "./utils/createInterestsLoader";
+import { createCategoryLoader } from "./utils/dataloaders/createInterestsLoader";
 import { Charity } from "./entities/Charity";
 import { Charitycategory } from "./entities/Charitycategory";
 import { Charityrolelink } from "./entities/Charityrolelink";
 import { Userrole } from "./entities/Userrole";
 import { CharityResolver } from "./resolvers/charity";
+import { Event } from "./entities/Event";
+import { Posteventlink } from "./entities/Posteventlink";
+import { Eventvolunteer } from "./entities/Eventvolunteer";
+import { Task } from "./entities/Task";
+import { Taskvolunteer } from "./entities/Taskvolunteer";
+import { Eventlike } from "./entities/Eventlike";
+import { createEventLikesLoader } from "./utils/dataloaders/createEventLikesLoader";
+import { EventResolver } from "./resolvers/event";
+import { createCharityLoader } from "./utils/dataloaders/createCharityLoader";
+import { Charityfollow } from "./entities/Charityfollow";
+import { createEventLoader } from "./utils/dataloaders/createEventLoader";
+import { EventvolunteerResolver } from "./resolvers/eventVolunteer";
+import { TaskResolver } from "./resolvers/task";
+import { TaskVolunteerResolver } from "./resolvers/taskVolunteer";
+import { createEventVolunteerLoader } from "./utils/dataloaders/createEventVolunteerLoader";
+// import { createEventVolunteerListLoader } from "./utils/dataloaders/createEventVolunteerListLoader";
+import { createTaskListLoader } from "./utils/dataloaders/createTaskListLoader";
+import { createTaskVolunteerListLoader } from "./utils/dataloaders/createTaskVolunteerListLoader";
 
 const main = async () => {
   const conn = await createConnection({
@@ -36,7 +54,9 @@ const main = async () => {
     logging: true,
     synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
-    entities: [Post, User, Like, Usercategory, Category, Charity, Charitycategory, Charityrolelink, Userrole],
+    entities: [Post, User, Like, Usercategory, Category, Charity
+      , Charitycategory, Charityrolelink, Userrole, Event, Posteventlink, Eventvolunteer, Task
+      , Taskvolunteer, Eventlike, Charityfollow],
   });
 
   // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
@@ -49,6 +69,8 @@ const main = async () => {
   // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('ADMIN')`);
   // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('VOLUNTEER')`);
   // console.log(await Userrole.find()); // remember that primary key generation starts from 1
+  // console.log(await Category.find());
+  // console.log(await Charityrolelink.find());
             
 
   const app = express();
@@ -61,14 +83,7 @@ const main = async () => {
 
   app.use(
     cors({
-      origin: 
-      [
-        "http://119.74.239.145",
-        "http://116.87.51.173",
-        "https://givehub.vercel.app",
-        "http://localhost:3000",
-        "http://localhost:4000"
-      ],
+      origin: process.env.CORS.split(' '),
       credentials: true,
     })
   );
@@ -95,7 +110,8 @@ const main = async () => {
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
-      resolvers: [HelloResolver, PostResolver, UserResolver, CategoryResolver, CharityResolver],
+      resolvers: [HelloResolver, PostResolver, UserResolver, CategoryResolver
+        , CharityResolver, EventResolver, EventvolunteerResolver, TaskResolver, TaskVolunteerResolver],
       validate: false,
     }),
     context: ({ req, res }): MyContext => ({
@@ -104,7 +120,13 @@ const main = async () => {
       redis,
       userLoader: createUserLoader(),
       likeLoader: createLikesLoader(),
-      categoryLoader: createCategoryLoader()
+      categoryLoader: createCategoryLoader(),
+      eventLikeLoader: createEventLikesLoader(),
+      charityLoader: createCharityLoader(),
+      eventLoader: createEventLoader(),
+      eventVolunteerLoader: createEventVolunteerLoader(),
+      userTaskListLoader: createTaskListLoader(),
+      taskVolunteerListLoader: createTaskVolunteerListLoader()
     }),
     playground: true,
     introspection: true

@@ -23,6 +23,9 @@ import { Charityrolelink } from "../entities/Charityrolelink";
 import { User } from "../entities/User";
 import { Category } from "../entities/Category";
 import { Charitycategory } from "../entities/Charitycategory";
+import { Charityfollow } from "../entities/Charityfollow";
+import { Event } from "../entities/Event";
+import convertCharIdsToUserIds from "../utils/dataloaders/createCharityFollowLoader";
 
 @ObjectType()
 class UENResponse {
@@ -43,6 +46,9 @@ class CharityResponse {
 
   @Field(() => Charity, { nullable: true })
   charity?: Charity;
+
+  @Field(() => Boolean)
+  success: boolean;
 }
 
 @ObjectType()
@@ -72,29 +78,79 @@ export class CharityResolver {
     return userLoader.load(charity.charitycreatorId);
   }
 
-  @FieldResolver( () => [Category] )
-    async categories(
-        @Root() charity: Charity,
-        @Ctx() {categoryLoader}: MyContext
-    ) {
-        // n+1 problem, n posts, n sql queries executed
-        // return User.findOne(post.creatorId);
+  @FieldResolver(() => [Category])
+  async categories(
+    @Root() charity: Charity,
+    @Ctx() { categoryLoader }: MyContext
+  ): Promise<(Category | Error)[]> {
+    // n+1 problem, n posts, n sql queries executed
+    // return User.findOne(post.creatorId);
 
-        // using dataloader
-        const charitycategories = await Charitycategory.find({where: {charityId: charity.id}});
+    // using dataloader
+    const charitycategories = await Charitycategory.find({
+      where: { charityId: charity.id },
+    });
 
-        if (charitycategories.length < 1) {
-          return [];
-        }
-        
-        const catids = charitycategories.map(cc => cc.categoryId);
-        
-        return await categoryLoader.loadMany(catids);
-    };
+    if (charitycategories.length < 1) {
+      return [];
+    }
+
+    const catids = charitycategories.map((cc) => cc.categoryId);
+
+    return await categoryLoader.loadMany(catids);
+  }
+
+  @FieldResolver(() => Int, { nullable: true })
+  async followStatus(@Root() charity: Charity, @Ctx() { req }: MyContext) {
+    if (!req.session.userId) {
+      return null;
+    }
+    const follow = await Charityfollow.findOne({where: {charityId: charity.id, userId: req.session.userId, auditstat: true}});
+
+    return follow ? 1 : null;
+  }
+
+  @FieldResolver(() => [User])
+  async followers(
+    @Root() charity: Charity,
+    @Ctx() { userLoader }: MyContext
+  ): Promise<(User | Error)[]> {
+    // n+1 problem, n posts, n sql queries executed
+    // return User.findOne(post.creatorId);
+    // using dataloader
+    const rec: Record<number, number[]> = await convertCharIdsToUserIds([charity.id]);
+
+    const nums = rec[charity.id];
+
+    return await userLoader.loadMany(nums);
+  }
+
+  @FieldResolver(() => [Event])
+  async charityEvents(
+    @Root() charity: Charity,
+    @Ctx() { eventLoader }: MyContext
+  ): Promise<(Event | Error)[]> {
+    const events = await Event.find({
+      where: {charityId: charity.id, auditstat: true}
+    })
+
+    if (events.length < 1) {
+      return [];
+    }
+
+    const eventIds = events.map(e => e.id);
+
+    return await eventLoader.loadMany(eventIds);
+  }
 
   @Query(() => Charity, { nullable: true })
-  charity(@Arg("uen", () => String) uen: string): Promise<Charity | undefined> {
-    return Charity.findOne({where: {uen: uen}});
+  charitySearchByUEN(@Arg("uen", () => String) uen: string): Promise<Charity | undefined> {
+    return Charity.findOne({ where: { uen: uen } });
+  }
+
+  @Query(() => Charity, { nullable: true })
+  charitySearchByID(@Arg("id", () => Int) id: number): Promise<Charity | undefined> {
+    return Charity.findOne({ where: { id: id } });
   }
 
   @UseMiddleware(isAuth)
@@ -192,6 +248,14 @@ export class CharityResolver {
     @Arg("options") options: CharityDataInput,
     @Ctx() { req }: MyContext
   ): Promise<CharityResponse> {
+
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User is not authenticated." }],
+      };
+    }
+
     let charity;
     try {
       // User.create({}).save()
@@ -219,6 +283,15 @@ export class CharityResolver {
           charityId: charity.id,
         })
         .execute();
+      await getConnection()
+        .createQueryBuilder()
+        .insert()
+        .into(Charityfollow)
+        .values({
+          userId: req.session.userId,
+          charityId: charity.id
+        })
+        .execute();
     } catch (err) {
       //|| err.detail.includes("already exists")) {
       // duplicate username error
@@ -230,25 +303,40 @@ export class CharityResolver {
               message: "A charity with the same UEN number already exists",
             },
           ],
+          success: false
         };
       }
+      return {
+        errors: [{field:"Charity", message: "Unable to create charity"}], success: false
+      }
     }
-    return { charity };
+    // inserting into charity admin keys in redis server
+    if (!charity) {
+      return { success: false, errors: [{field:"Charity", message:"Unable to create charity"}]};
+    }
+    if (!req.session.charityAdminIds) {
+      req.session.charityAdminIds = [charity.id]
+    }
+    req.session.charityAdminIds.push(charity.id);
+    return { charity, success: true };
   }
 
   @Query(() => PaginatedCharities)
   async searchCharitiesByCategories(
     @Arg("limit", () => Int) limit: number,
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
-    @Arg("categories", () => [Number], { nullable:true }) categories: [number] | null
-  ): Promise<PaginatedCharities>{
+    @Arg("categories", () => [Number], { nullable: true })
+    categories: [number] | null
+  ): Promise<PaginatedCharities> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
 
     const replacements: any[] = [realLimitPlusOne];
 
     if (categories) {
-      const catcsv = categories.reduce<string>((a,b) => a + b + `,`,``).slice(0,-1);
+      const catcsv = categories
+        .reduce<string>((a, b) => a + b + `,`, ``)
+        .slice(0, -1);
       replacements.push(catcsv);
 
       if (cursor) {
@@ -256,7 +344,8 @@ export class CharityResolver {
       }
 
       //actual query
-      const chars = await getConnection().query(`
+      const chars = await getConnection().query(
+        `
         SELECT DISTINCT char.* 
         FROM charitycategory cc
         INNER JOIN 
@@ -265,14 +354,16 @@ export class CharityResolver {
         ON cat.id = cc."categoryId"
         FULL JOIN charity char ON char.id = cc."charityId"
         WHERE cc.auditstat = TRUE
-        ${cursor ? `AND char."createdAt" < $3`: ""}
+        ${cursor ? `AND char."createdAt" < $3` : ""}
         ORDER BY char."createdAt" DESC
         limit $1;
-        `, replacements);
+        `,
+        replacements
+      );
 
       return {
-        charities: chars.slice(0,realLimit),
-        hasMore: chars.length === realLimitPlusOne
+        charities: chars.slice(0, realLimit),
+        hasMore: chars.length === realLimitPlusOne,
       };
     }
 
@@ -280,22 +371,77 @@ export class CharityResolver {
       replacements.push(new Date(parseInt(cursor))); //cursor null at first
     }
 
-    const chars = await getConnection().query(`
+    const chars = await getConnection().query(
+      `
 
     SELECT char.* 
     FROM charity char
     ${cursor ? `where char."createdAt" < $2` : ""}
     order by char."createdAt" DESC
     limit $1
-    `, 
+    `,
       replacements
     );
 
     return {
       charities: chars.slice(0, realLimit),
-      hasMore: chars.length === realLimitPlusOne
+      hasMore: chars.length === realLimitPlusOne,
     };
   }
 
-  
+  @Mutation(() => CharityResponse)
+  @UseMiddleware(isAuth)
+  async followCharity(
+    @Arg("charityId", () => Int) charityId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<CharityResponse> {
+    const { userId } = req.session;
+
+    const follow = await Charityfollow.findOne({ where: { charityId, userId, auditstat:true } });
+
+    // user has liked post before and unliking the post
+    if (follow) {
+      await getConnection().transaction(async (tm) => {
+        await tm.query(
+          `
+                update charityfollow 
+                set auditstat = false
+                where id = $1
+            `,
+          [follow.id]
+        );
+
+        await tm.query(
+          `
+                update charity 
+                set "followNumber" = "followNumber" - 1
+                where id = $1
+                and "followNumber">0
+            `,
+          [charityId]
+        );
+      });
+    } else if (!follow) {
+      //has never liked before
+      await getConnection().transaction(async (tm) => {
+        await tm.query(
+          `
+            insert into charityfollow ("userId", "charityId")
+            values ($1, $2)
+          `,
+          [userId, charityId]
+        );
+
+        await tm.query(
+          `
+                update charity 
+                set "followNumber" = "followNumber" + 1
+                where id = $1
+            `,
+          [charityId]
+        );
+      });
+    }
+    return (follow) ? {success:false} : {success: true}; // returning unfollowing/following
+  }
 }

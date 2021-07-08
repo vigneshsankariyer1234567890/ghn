@@ -1,25 +1,39 @@
 import {
-    Resolver,
-    Mutation,
-    Arg,
-    Field,
-    Ctx,
-    ObjectType,
-    Query,
-    FieldResolver,
-    Root,
-  } from "type-graphql";
+  Resolver,
+  Mutation,
+  Arg,
+  Field,
+  Ctx,
+  ObjectType,
+  Query,
+  FieldResolver,
+  Root,
+  UseMiddleware,
+} from "type-graphql";
 import { MyContext } from "../types";
 import { User } from "../entities/User";
 import argon2 from "argon2";
 import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from "../constants";
-import {UsernamePasswordInput} from '../utils/UsernamePasswordInput'
+import { UsernamePasswordInput } from "../utils/UsernamePasswordInput";
 import { validateRegister } from "../utils/validateRegister";
 import { sendEmail } from "../utils/sendEmail";
 import { v4 } from "uuid";
 import { getConnection } from "typeorm";
 import { Category } from "../entities/Category";
 import { Usercategory } from "../entities/Usercategory";
+import { Charity } from "../entities/Charity";
+import { Charityfollow } from "../entities/Charityfollow";
+import { Charityrolelink } from "../entities/Charityrolelink";
+import { Event } from "../entities/Event";
+import { Eventlike } from "../entities/Eventlike";
+import { isAuth } from "../middleware/isAuth";
+import {
+  EventTaskContainer,
+  EventTaskContainerResponse,
+} from "../utils/cardContainers/EventTaskContainer";
+import { Eventvolunteer } from "../entities/Eventvolunteer";
+import { Task } from "../entities/Task";
+import { Taskvolunteer } from "../entities/Taskvolunteer";
 
 @ObjectType()
 export class FieldError {
@@ -40,7 +54,6 @@ class UserResponse {
 
 @Resolver(User)
 export class UserResolver {
-
   @FieldResolver(() => String)
   email(@Root() user: User, @Ctx() { req }: MyContext) {
     // this is the current user and its ok to show them their own email
@@ -51,25 +64,90 @@ export class UserResolver {
     return "";
   }
 
-  @FieldResolver( () => [Category] )
-    async categories(
-        @Root() user: User,
-        @Ctx() {categoryLoader}: MyContext
-    ) {
-        // n+1 problem, n posts, n sql queries executed
-        // return User.findOne(post.creatorId);
+  @FieldResolver(() => [Category])
+  async categories(@Root() user: User, @Ctx() { categoryLoader }: MyContext) {
+    // n+1 problem, n posts, n sql queries executed
+    // return User.findOne(post.creatorId);
 
-        // using dataloader
-        const usercategories = await Usercategory.findByIds([user.id]);
+    // using dataloader
+    const usercategories = await getConnection() //await Usercategory.findByIds([user.id]);
+      .createQueryBuilder()
+      .select("*")
+      .from(Usercategory, `uc`)
+      .where(`uc.auditstat = TRUE`)
+      .andWhere(`uc."userId" = :id`, { id: user.id })
+      .getRawMany<Usercategory>();
 
-        if (usercategories.length < 1) {
-          return [];
-        }
+    if (usercategories.length < 1) {
+      return [];
+    }
 
-        const catids = usercategories.map(uc => uc.categoryId);
-        
-        return await categoryLoader.loadMany(catids);
-    };
+    const catids = usercategories.map((uc) => uc.categoryId);
+
+    return await categoryLoader.loadMany(catids);
+  }
+
+  @FieldResolver(() => [Charity])
+  async followedCharities(
+    @Root() user: User,
+    @Ctx() { charityLoader }: MyContext
+  ): Promise<(Charity | Error)[]> {
+    // n+1 problem, n posts, n sql queries executed
+    // return User.findOne(post.creatorId);
+
+    // using dataloader
+    const charityfollows = await Charityfollow.find({
+      where: { userId: user.id, auditstat: true },
+    });
+
+    if (charityfollows.length < 1) {
+      return [];
+    }
+
+    const charIds = charityfollows.map((cf) => cf.charityId);
+
+    return await charityLoader.loadMany(charIds);
+  }
+
+  @FieldResolver(() => [Charity])
+  async adminCharities(
+    @Root() user: User,
+    @Ctx() { charityLoader }: MyContext
+  ): Promise<(Charity | Error)[]> {
+    // n+1 problem, n posts, n sql queries executed
+    // return User.findOne(post.creatorId);
+
+    // using dataloader
+    const crls = await Charityrolelink.find({
+      where: { userId: user.id, auditstat: true },
+    });
+
+    if (crls.length < 1) {
+      return [];
+    }
+
+    const charIds = crls.map((cf) => cf.charityId);
+
+    return await charityLoader.loadMany(charIds);
+  }
+
+  @FieldResolver(() => [Event])
+  async likedEvents(
+    @Root() user: User,
+    @Ctx() { eventLoader }: MyContext
+  ): Promise<(Event | Error)[]> {
+    const likedEvents = await Eventlike.find({
+      where: { userId: user.id, auditstat: true },
+    });
+
+    if (likedEvents.length < 1) {
+      return [];
+    }
+
+    const eventIds = likedEvents.map((le) => le.eventId);
+
+    return await eventLoader.loadMany(eventIds);
+  }
 
   @Query(() => User, { nullable: true })
   me(@Ctx() { req }: MyContext) {
@@ -165,6 +243,16 @@ export class UserResolver {
 
     req.session.userId = user.id;
 
+    // Find the charities that user is admin of, map to charity ids and store in cookie
+
+    const charityAdmins = await Charityrolelink.find({
+      where: { auditstat: true, userId: user.id },
+    });
+
+    if (charityAdmins.length > 0) {
+      req.session.charityAdminIds = charityAdmins.map((ca) => ca.charityId);
+    }
+
     return {
       user,
     };
@@ -242,6 +330,14 @@ export class UserResolver {
     // log in user after change password
     req.session.userId = user.id;
 
+    const charityAdmins = await Charityrolelink.find({
+      where: { auditstat: true, userId: user.id },
+    });
+
+    if (charityAdmins.length > 0) {
+      req.session.charityAdminIds = charityAdmins.map((ca) => ca.charityId);
+    }
+
     return { user };
   }
 
@@ -267,12 +363,63 @@ export class UserResolver {
 
     await sendEmail(
       email,
-      `<a href="http://localhost:3000/change-password/${token}">reset password</a>`
+      `<a href="https://givehub.vercel.app/change-password/${token}">reset password</a>`
     );
 
     return true;
   }
 
+  @Query(() => EventTaskContainerResponse)
+  @UseMiddleware(isAuth)
+  async viewTasksAssignedToMe(
+    @Ctx() { req }: MyContext
+  ): Promise<EventTaskContainerResponse> {
+    if (!req.session.userId) {
+      return { success: false };
+    }
 
+    // get the events I am part of
+    const eventarray = await getConnection()
+      .createQueryBuilder()
+      .select(`e.*`)
+      .from(Event, `e`)
+      .innerJoin(Eventvolunteer, `ev`, `e.id = ev."eventId"`)
+      .where(`e.completed = false`)
+      .andWhere(`e.auditstat = true`)
+      .andWhere(`ev."userId" = :uid`, { uid: req.session.userId })
+      .andWhere(`ev.adminapproval = 'approved'`)
+      .andWhere(`ev.auditstat = true`)
+      .andWhere(`ev."volunteeringCompleted" = false`)
+      .getRawMany<Event>();
 
+    // get the tasks assigned to me
+    const taskarray = await getConnection()
+      .createQueryBuilder()
+      .select(`t.*`)
+      .from(Task, `t`)
+      .innerJoin(Taskvolunteer, `tv`, `t.id = tv."taskId"`)
+      .where(`t.auditstat = true`)
+      .andWhere(`t.completionstatus <> 'completed'`)
+      .andWhere(`tv."userId" = :uid`, { uid: req.session.userId })
+      .andWhere(`tv.auditstat = true`)
+      .getRawMany<Task>();
+
+    // map each event to array of tasks
+    const evhashmap: Record<number, Task[]> = {};
+
+    eventarray.forEach((e) => {
+      const filteredtasks = taskarray.filter((t) => t.eventId === e.id);
+      evhashmap[e.id] = filteredtasks;
+    });
+
+    // map each event in event array to become EventTaskContainer
+    const evcontainers: EventTaskContainer[] =
+      eventarray.map<EventTaskContainer>((eve) => {
+        const tasks = evhashmap[eve.id];
+        return new EventTaskContainer(eve, tasks);
+      });
+
+    // return EventTaskContainerResponse
+    return { success: true, eventContainers: evcontainers };
+  }
 }

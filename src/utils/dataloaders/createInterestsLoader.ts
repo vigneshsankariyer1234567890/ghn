@@ -1,7 +1,7 @@
 // create new loader for each field to optimise
 
 import DataLoader from "dataloader";
-import { Category } from "../entities/Category";
+import { Category } from "../../entities/Category";
 // import { UserCategory } from "../entities/UserCategory";
 
 
