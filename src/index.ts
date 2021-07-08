@@ -43,7 +43,7 @@ import { EventvolunteerResolver } from "./resolvers/eventVolunteer";
 import { TaskResolver } from "./resolvers/task";
 import { TaskVolunteerResolver } from "./resolvers/taskVolunteer";
 import { createEventVolunteerLoader } from "./utils/dataloaders/createEventVolunteerLoader";
-import { createEventVolunteerListLoader } from "./utils/dataloaders/createEventVolunteerListLoader";
+// import { createEventVolunteerListLoader } from "./utils/dataloaders/createEventVolunteerListLoader";
 import { createTaskListLoader } from "./utils/dataloaders/createTaskListLoader";
 import { createTaskVolunteerListLoader } from "./utils/dataloaders/createTaskVolunteerListLoader";
 
@@ -83,14 +83,7 @@ const main = async () => {
 
   app.use(
     cors({
-      origin: 
-      [
-        "http://119.74.239.145",
-        "http://116.87.51.173",
-        "https://givehub.vercel.app",
-        "http://localhost:3000",
-        "http://localhost:4000"
-      ],
+      origin: process.env.CORS.split(' '),
       credentials: true,
     })
   );

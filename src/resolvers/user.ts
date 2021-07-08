@@ -363,7 +363,7 @@ export class UserResolver {
 
     await sendEmail(
       email,
-      `<a href="http://localhost:3000/change-password/${token}">reset password</a>`
+      `<a href="https://givehub.vercel.app/change-password/${token}">reset password</a>`
     );
 
     return true;
