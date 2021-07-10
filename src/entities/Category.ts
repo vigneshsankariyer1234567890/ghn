@@ -1,5 +1,6 @@
 import { Field, ObjectType } from "type-graphql";
 import { BaseEntity, Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn  } from "typeorm";
+import { Charitycategory } from "./Charitycategory";
 //import { Charity } from "./Charity";
 import { Usercategory } from "./Usercategory";
 
@@ -21,6 +22,9 @@ export class Category extends BaseEntity {
 
   @OneToMany(() => Usercategory, usercat => usercat.category)
   categories: Usercategory[]
+
+  @OneToMany(() => Charitycategory, charitycat => charitycat.charity)
+  charityCategories: Charitycategory[]
 
   @Field(() => String)
   @CreateDateColumn()

@@ -18,6 +18,7 @@ import { Eventlike } from "./Eventlike";
 import { Event } from "./Event";
 import { Charityfollow } from "./Charityfollow";
 import { Taskvolunteer } from "./Taskvolunteer";
+import { Userfriend } from "./Userfriend";
 
 @ObjectType()
 @Entity()
@@ -66,6 +67,12 @@ export class User extends BaseEntity {
 
   @OneToMany(() => Charityfollow, cf => cf.user)
   followedCharities: Charityfollow[];
+
+  @OneToMany(() => Userfriend, uf => uf.user1)
+  u1: Userfriend[];
+
+  @OneToMany(() => Userfriend, uf => uf.user2)
+  u2: Userfriend[];
 
   @Field(() => String)
   @CreateDateColumn()

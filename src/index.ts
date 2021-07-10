@@ -22,7 +22,11 @@ import path from "path";
 import { Usercategory } from "./entities/Usercategory";
 import { Category } from "./entities/Category";
 import { CategoryResolver } from "./resolvers/category";
-import { createCategoryLoader } from "./utils/dataloaders/createInterestsLoader";
+import {
+  createCategoryLoader,
+  createCharityCategoryLoader,
+  createUserCategoryLoader,
+} from "./utils/dataloaders/createInterestsLoader";
 import { Charity } from "./entities/Charity";
 import { Charitycategory } from "./entities/Charitycategory";
 import { Charityrolelink } from "./entities/Charityrolelink";
@@ -34,11 +38,17 @@ import { Eventvolunteer } from "./entities/Eventvolunteer";
 import { Task } from "./entities/Task";
 import { Taskvolunteer } from "./entities/Taskvolunteer";
 import { Eventlike } from "./entities/Eventlike";
-import { createEventLikesLoader } from "./utils/dataloaders/createEventLikesLoader";
+import {
+  createEventLikesArrayLoader,
+  createEventLikesLoader,
+} from "./utils/dataloaders/createEventLikesLoader";
 import { EventResolver } from "./resolvers/event";
 import { createCharityLoader } from "./utils/dataloaders/createCharityLoader";
 import { Charityfollow } from "./entities/Charityfollow";
-import { createEventLoader } from "./utils/dataloaders/createEventLoader";
+import {
+  createCEventsLoader,
+  createEventLoader,
+} from "./utils/dataloaders/createEventLoader";
 import { EventvolunteerResolver } from "./resolvers/eventVolunteer";
 import { TaskResolver } from "./resolvers/task";
 import { TaskVolunteerResolver } from "./resolvers/taskVolunteer";
@@ -46,6 +56,13 @@ import { createEventVolunteerLoader } from "./utils/dataloaders/createEventVolun
 // import { createEventVolunteerListLoader } from "./utils/dataloaders/createEventVolunteerListLoader";
 import { createTaskListLoader } from "./utils/dataloaders/createTaskListLoader";
 import { createTaskVolunteerListLoader } from "./utils/dataloaders/createTaskVolunteerListLoader";
+import { Userfriend } from "./entities/Userfriend";
+import {
+  createCharityFollowersLoader,
+  createSingleCharityFollowLoader,
+  createUserCharityFollowsLoader,
+} from "./utils/dataloaders/createCharityFollowLoader";
+import { createCharityAdminRolesLoader } from "./utils/dataloaders/createCharityAdminRoleLoader";
 
 const main = async () => {
   const conn = await createConnection({
@@ -54,9 +71,25 @@ const main = async () => {
     logging: true,
     synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
-    entities: [Post, User, Like, Usercategory, Category, Charity
-      , Charitycategory, Charityrolelink, Userrole, Event, Posteventlink, Eventvolunteer, Task
-      , Taskvolunteer, Eventlike, Charityfollow],
+    entities: [
+      Post,
+      User,
+      Like,
+      Usercategory,
+      Category,
+      Charity,
+      Charitycategory,
+      Charityrolelink,
+      Userrole,
+      Event,
+      Posteventlink,
+      Eventvolunteer,
+      Task,
+      Taskvolunteer,
+      Eventlike,
+      Charityfollow,
+      Userfriend,
+    ],
   });
 
   // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
@@ -71,11 +104,10 @@ const main = async () => {
   // console.log(await Userrole.find()); // remember that primary key generation starts from 1
   // console.log(await Category.find());
   // console.log(await Charityrolelink.find());
-            
 
   const app = express();
 
-  const RedisStore = connectRedis(session); 
+  const RedisStore = connectRedis(session);
 
   const redis = new Redis(process.env.REDIS_URL);
 
@@ -83,7 +115,7 @@ const main = async () => {
 
   app.use(
     cors({
-      origin: process.env.CORS.split(' '),
+      origin: process.env.CORS.split(" "),
       credentials: true,
     })
   );
@@ -110,8 +142,17 @@ const main = async () => {
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
-      resolvers: [HelloResolver, PostResolver, UserResolver, CategoryResolver
-        , CharityResolver, EventResolver, EventvolunteerResolver, TaskResolver, TaskVolunteerResolver],
+      resolvers: [
+        HelloResolver,
+        PostResolver,
+        UserResolver,
+        CategoryResolver,
+        CharityResolver,
+        EventResolver,
+        EventvolunteerResolver,
+        TaskResolver,
+        TaskVolunteerResolver,
+      ],
       validate: false,
     }),
     context: ({ req, res }): MyContext => ({
@@ -121,17 +162,24 @@ const main = async () => {
       userLoader: createUserLoader(),
       likeLoader: createLikesLoader(),
       categoryLoader: createCategoryLoader(),
+      charityCategoryLoader: createCharityCategoryLoader(),
+      userCategoryLoader: createUserCategoryLoader(),
       eventLikeLoader: createEventLikesLoader(),
+      userEventLikesLoader: createEventLikesArrayLoader(),
       charityLoader: createCharityLoader(),
       eventLoader: createEventLoader(),
+      charityEventsLoader: createCEventsLoader(),
       eventVolunteerLoader: createEventVolunteerLoader(),
       userTaskListLoader: createTaskListLoader(),
-      taskVolunteerListLoader: createTaskVolunteerListLoader()
+      taskVolunteerListLoader: createTaskVolunteerListLoader(),
+      singleCharityFollowLoader: createSingleCharityFollowLoader(),
+      charityFollowersLoader: createCharityFollowersLoader(),
+      userCharityFollowsLoader: createUserCharityFollowsLoader(),
+      charityAdminRoleLoader: createCharityAdminRolesLoader(),
     }),
     playground: true,
-    introspection: true
+    introspection: true,
   });
-
 
   apolloServer.applyMiddleware({
     app,

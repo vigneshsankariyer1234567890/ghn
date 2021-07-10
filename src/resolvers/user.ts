@@ -20,12 +20,12 @@ import { sendEmail } from "../utils/sendEmail";
 import { v4 } from "uuid";
 import { getConnection } from "typeorm";
 import { Category } from "../entities/Category";
-import { Usercategory } from "../entities/Usercategory";
+// import { Usercategory } from "../entities/Usercategory";
 import { Charity } from "../entities/Charity";
-import { Charityfollow } from "../entities/Charityfollow";
+// import { Charityfollow } from "../entities/Charityfollow";
 import { Charityrolelink } from "../entities/Charityrolelink";
 import { Event } from "../entities/Event";
-import { Eventlike } from "../entities/Eventlike";
+// import { Eventlike } from "../entities/Eventlike";
 import { isAuth } from "../middleware/isAuth";
 import {
   EventTaskContainer,
@@ -65,18 +65,8 @@ export class UserResolver {
   }
 
   @FieldResolver(() => [Category])
-  async categories(@Root() user: User, @Ctx() { categoryLoader }: MyContext) {
-    // n+1 problem, n posts, n sql queries executed
-    // return User.findOne(post.creatorId);
-
-    // using dataloader
-    const usercategories = await getConnection() //await Usercategory.findByIds([user.id]);
-      .createQueryBuilder()
-      .select("*")
-      .from(Usercategory, `uc`)
-      .where(`uc.auditstat = TRUE`)
-      .andWhere(`uc."userId" = :id`, { id: user.id })
-      .getRawMany<Usercategory>();
+  async categories(@Root() user: User, @Ctx() { categoryLoader, userCategoryLoader }: MyContext) {
+    const usercategories = await userCategoryLoader.load(user.id);
 
     if (usercategories.length < 1) {
       return [];
@@ -90,17 +80,11 @@ export class UserResolver {
   @FieldResolver(() => [Charity])
   async followedCharities(
     @Root() user: User,
-    @Ctx() { charityLoader }: MyContext
+    @Ctx() { charityLoader, userCharityFollowsLoader }: MyContext
   ): Promise<(Charity | Error)[]> {
-    // n+1 problem, n posts, n sql queries executed
-    // return User.findOne(post.creatorId);
+    const charityfollows = await userCharityFollowsLoader.load(user.id);
 
-    // using dataloader
-    const charityfollows = await Charityfollow.find({
-      where: { userId: user.id, auditstat: true },
-    });
-
-    if (charityfollows.length < 1) {
+    if (!charityfollows) {
       return [];
     }
 
@@ -112,17 +96,15 @@ export class UserResolver {
   @FieldResolver(() => [Charity])
   async adminCharities(
     @Root() user: User,
-    @Ctx() { charityLoader }: MyContext
+    @Ctx() { charityLoader, charityAdminRoleLoader }: MyContext
   ): Promise<(Charity | Error)[]> {
     // n+1 problem, n posts, n sql queries executed
     // return User.findOne(post.creatorId);
 
     // using dataloader
-    const crls = await Charityrolelink.find({
-      where: { userId: user.id, auditstat: true },
-    });
+    const crls = await charityAdminRoleLoader.load(user.id);
 
-    if (crls.length < 1) {
+    if (!crls) {
       return [];
     }
 
@@ -134,13 +116,11 @@ export class UserResolver {
   @FieldResolver(() => [Event])
   async likedEvents(
     @Root() user: User,
-    @Ctx() { eventLoader }: MyContext
+    @Ctx() { eventLoader, userEventLikesLoader }: MyContext
   ): Promise<(Event | Error)[]> {
-    const likedEvents = await Eventlike.find({
-      where: { userId: user.id, auditstat: true },
-    });
+    const likedEvents = await userEventLikesLoader.load(user.id);
 
-    if (likedEvents.length < 1) {
+    if (!likedEvents) {
       return [];
     }
 

@@ -22,10 +22,9 @@ import { getConnection } from "typeorm";
 import { Charityrolelink } from "../entities/Charityrolelink";
 import { User } from "../entities/User";
 import { Category } from "../entities/Category";
-import { Charitycategory } from "../entities/Charitycategory";
+// import { Charitycategory } from "../entities/Charitycategory";
 import { Charityfollow } from "../entities/Charityfollow";
 import { Event } from "../entities/Event";
-import convertCharIdsToUserIds from "../utils/dataloaders/createCharityFollowLoader";
 
 @ObjectType()
 class UENResponse {
@@ -81,15 +80,9 @@ export class CharityResolver {
   @FieldResolver(() => [Category])
   async categories(
     @Root() charity: Charity,
-    @Ctx() { categoryLoader }: MyContext
+    @Ctx() { categoryLoader, charityCategoryLoader }: MyContext
   ): Promise<(Category | Error)[]> {
-    // n+1 problem, n posts, n sql queries executed
-    // return User.findOne(post.creatorId);
-
-    // using dataloader
-    const charitycategories = await Charitycategory.find({
-      where: { charityId: charity.id },
-    });
+    const charitycategories = await charityCategoryLoader.load(charity.id);
 
     if (charitycategories.length < 1) {
       return [];
@@ -101,11 +94,14 @@ export class CharityResolver {
   }
 
   @FieldResolver(() => Int, { nullable: true })
-  async followStatus(@Root() charity: Charity, @Ctx() { req }: MyContext) {
+  async followStatus(@Root() charity: Charity, @Ctx() { req, singleCharityFollowLoader }: MyContext) {
     if (!req.session.userId) {
       return null;
     }
-    const follow = await Charityfollow.findOne({where: {charityId: charity.id, userId: req.session.userId, auditstat: true}});
+    const follow = await singleCharityFollowLoader.load({
+      charityId: charity.id,
+      userId: req.session.userId
+    })
 
     return follow ? 1 : null;
   }
@@ -113,14 +109,15 @@ export class CharityResolver {
   @FieldResolver(() => [User])
   async followers(
     @Root() charity: Charity,
-    @Ctx() { userLoader }: MyContext
+    @Ctx() { userLoader, charityFollowersLoader }: MyContext
   ): Promise<(User | Error)[]> {
-    // n+1 problem, n posts, n sql queries executed
-    // return User.findOne(post.creatorId);
-    // using dataloader
-    const rec: Record<number, number[]> = await convertCharIdsToUserIds([charity.id]);
+    const rec = await charityFollowersLoader.load(charity.id);
 
-    const nums = rec[charity.id];
+    if (!rec) {
+      return [];
+    }
+
+    const nums = rec.map(r => r.userId);
 
     return await userLoader.loadMany(nums);
   }
@@ -128,19 +125,9 @@ export class CharityResolver {
   @FieldResolver(() => [Event])
   async charityEvents(
     @Root() charity: Charity,
-    @Ctx() { eventLoader }: MyContext
+    @Ctx() { charityEventsLoader }: MyContext
   ): Promise<(Event | Error)[]> {
-    const events = await Event.find({
-      where: {charityId: charity.id, auditstat: true}
-    })
-
-    if (events.length < 1) {
-      return [];
-    }
-
-    const eventIds = events.map(e => e.id);
-
-    return await eventLoader.loadMany(eventIds);
+    return await charityEventsLoader.load(charity.id);
   }
 
   @Query(() => Charity, { nullable: true })
@@ -253,6 +240,38 @@ export class CharityResolver {
       return {
         success: false,
         errors: [{ field: "User", message: "User is not authenticated." }],
+      };
+    }
+
+    const uenresp: UENResponse = await this.checkUENNumber(options.uen);
+
+    if (!uenresp.success) {
+      return {
+        success: false,
+        errors: uenresp.errors
+      }
+    }
+
+    if (!uenresp.uendata) {
+      return {
+        success: false,
+        errors: [{field:"UEN Error", message: "UEN Validation was unsuccessful."}]
+      };
+    }
+
+    const uendata: UENData = uenresp.uendata;
+
+    if (uendata.entity_name !== options.name) {
+      return {
+        success: false,
+        errors: [{field:"Charity Name", message: "Charity Name does not match entity registered name."}]
+      };
+    }
+
+    if (uendata.reg_postal_code !== options.postalcode) {
+      return {
+        success: false,
+        errors: [{field:"Charity Address", message: "The postal code given does not match registered postal code."}]
       };
     }
 

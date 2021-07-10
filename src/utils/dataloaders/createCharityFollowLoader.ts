@@ -1,30 +1,85 @@
+import DataLoader from "dataloader";
 import { getConnection } from "typeorm";
 import { Charityfollow } from "../../entities/Charityfollow";
 
-const convertCharIdsToUserIds = async (charIds: number[]): Promise<Record<number, number[]>> => {
+export const createSingleCharityFollowLoader = () =>
+  new DataLoader<{ charityId: number; userId: number }, Charityfollow | null>(
+    async (keys) => {
+      const sqlquerystring = keys
+        .map<string>(
+          (k) =>
+            `(cf."charityId" = ${k.charityId} and cf."userId" = ${k.userId} and cf.auditstat = true)`
+        )
+        .reduce<string>((a, b) => a + ` or ` + b, ``)
+        .slice(3);
 
-  const charIdToFollowerIds: Record<number, number[]> = {};
+      const follows = await getConnection()
+        .createQueryBuilder()
+        .select(`cf.*`)
+        .from(Charityfollow, `cf`)
+        .where(`(` + sqlquerystring + `)`)
+        .getRawMany<Charityfollow>();
 
-  const follows =  getConnection()
-    .createQueryBuilder()
-    .select(`cf.*`)
-    .from(Charityfollow, `cf`)
-    .where(`cf."charityId" in (:charids)`, {charids: charIds as number[]})
-    .andWhere(`cf.auditstat = true`)
-    .orderBy(`cf."charityId"`, "ASC")
-    .getRawMany<Charityfollow>();
-  
-  charIds.forEach(num => {
-    follows.then(
-      i => {
-        const nums = i.filter( f => f.charityId === num).map(f => f.userId);
-        charIdToFollowerIds[num] = nums;
-      }
-    )
+      const followIdsToFollow: Record<string, Charityfollow> = {};
+
+      follows.forEach((follow) => {
+        followIdsToFollow[`${follow.charityId}|${follow.userId}`] = follow;
+      });
+
+      return keys.map(
+        (key) => followIdsToFollow[`${key.charityId}|${key.userId}`]
+      );
+    }
+  );
+
+export const createCharityFollowersLoader = () =>
+  new DataLoader<number, Charityfollow[] | null>(async (keys) => {
+    const sqlquerystring = keys
+      .map<string>((k) => `(cf."charityId" = ${k})`)
+      .reduce<string>((a, b) => a + ` or ` + b, ``)
+      .slice(3);
+
+    const followers = await getConnection()
+      .createQueryBuilder()
+      .select(`cf.*`)
+      .from(Charityfollow, `cf`)
+      .where(`(` + sqlquerystring + `)`)
+      .andWhere(`cf.auditstat = true`)
+      .getRawMany<Charityfollow>();
+
+    // hashmap for recording mapping between eventid and list of event volunteers
+    const followIdsToFollow: Record<number, Charityfollow[]> = {};
+    keys.forEach((k) => {
+      const f = followers.filter((cf) => cf.charityId === k);
+      followIdsToFollow[k] = f;
+    });
+
+    // returns grouped array
+    return keys.map((key) => followIdsToFollow[key]);
   });
 
-  return charIdToFollowerIds;
+  export const createUserCharityFollowsLoader = () =>
+  new DataLoader<number, Charityfollow[] | null>(async (keys) => {
+    const sqlquerystring = keys
+      .map<string>((k) => `(cf."userId" = ${k})`)
+      .reduce<string>((a, b) => a + ` or ` + b, ``)
+      .slice(3);
 
-} 
+    const followers = await getConnection()
+      .createQueryBuilder()
+      .select(`cf.*`)
+      .from(Charityfollow, `cf`)
+      .where(`(` + sqlquerystring + `)`)
+      .andWhere(`cf.auditstat = true`)
+      .getRawMany<Charityfollow>();
 
-export default convertCharIdsToUserIds
+    // hashmap for recording mapping between eventid and list of event volunteers
+    const followIdsToFollow: Record<number, Charityfollow[]> = {};
+    keys.forEach((k) => {
+      const f = followers.filter((cf) => cf.userId === k);
+      followIdsToFollow[k] = f;
+    });
+
+    // returns grouped array
+    return keys.map((key) => followIdsToFollow[key]);
+  });
