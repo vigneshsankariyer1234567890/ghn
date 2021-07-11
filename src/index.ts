@@ -53,7 +53,7 @@ import { EventvolunteerResolver } from "./resolvers/eventVolunteer";
 import { TaskResolver } from "./resolvers/task";
 import { TaskVolunteerResolver } from "./resolvers/taskVolunteer";
 import { createEventVolunteerLoader } from "./utils/dataloaders/createEventVolunteerLoader";
-// import { createEventVolunteerListLoader } from "./utils/dataloaders/createEventVolunteerListLoader";
+import { createUserVolunteeredEventsListLoader } from "./utils/dataloaders/createEventVolunteerListLoader";
 import { createTaskListLoader } from "./utils/dataloaders/createTaskListLoader";
 import { createTaskVolunteerListLoader } from "./utils/dataloaders/createTaskVolunteerListLoader";
 import { Userfriend } from "./entities/Userfriend";
@@ -63,6 +63,7 @@ import {
   createUserCharityFollowsLoader,
 } from "./utils/dataloaders/createCharityFollowLoader";
 import { createCharityAdminRolesLoader } from "./utils/dataloaders/createCharityAdminRoleLoader";
+import { createUserFriendshipLoader, createUserFriendsLoader } from "./utils/dataloaders/createUserFriendLoader";
 
 const main = async () => {
   const conn = await createConnection({
@@ -176,6 +177,9 @@ const main = async () => {
       charityFollowersLoader: createCharityFollowersLoader(),
       userCharityFollowsLoader: createUserCharityFollowsLoader(),
       charityAdminRoleLoader: createCharityAdminRolesLoader(),
+      userFriendsLoader: createUserFriendsLoader(),
+      userFriendshipLoader: createUserFriendshipLoader(),
+      userVolunteeredEventsListLoader: createUserVolunteeredEventsListLoader()
     }),
     playground: true,
     introspection: true,

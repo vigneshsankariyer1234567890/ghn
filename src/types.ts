@@ -8,18 +8,29 @@ import {
 } from "./utils/dataloaders/createInterestsLoader";
 import { createLikesLoader } from "./utils/dataloaders/createLikesLoader";
 import { createUserLoader } from "./utils/dataloaders/createUserLoader";
-import { createEventLikesArrayLoader, createEventLikesLoader } from "./utils/dataloaders/createEventLikesLoader";
+import {
+  createEventLikesArrayLoader,
+  createEventLikesLoader,
+} from "./utils/dataloaders/createEventLikesLoader";
 import { createCharityLoader } from "./utils/dataloaders/createCharityLoader";
-import { createEventLoader, createCEventsLoader } from "./utils/dataloaders/createEventLoader";
+import {
+  createEventLoader,
+  createCEventsLoader,
+} from "./utils/dataloaders/createEventLoader";
 import { createEventVolunteerLoader } from "./utils/dataloaders/createEventVolunteerLoader";
 import { createTaskListLoader } from "./utils/dataloaders/createTaskListLoader";
 import { createTaskVolunteerListLoader } from "./utils/dataloaders/createTaskVolunteerListLoader";
 import {
   createSingleCharityFollowLoader,
   createCharityFollowersLoader,
-  createUserCharityFollowsLoader
+  createUserCharityFollowsLoader,
 } from "./utils/dataloaders/createCharityFollowLoader";
 import { createCharityAdminRolesLoader } from "./utils/dataloaders/createCharityAdminRoleLoader";
+import {
+  createUserFriendsLoader,
+  createUserFriendshipLoader,
+} from "./utils/dataloaders/createUserFriendLoader";
+import {createUserVolunteeredEventsListLoader} from "./utils/dataloaders/createEventVolunteerListLoader"
 
 export type MyContext = {
   req: Request & {
@@ -43,6 +54,9 @@ export type MyContext = {
   taskVolunteerListLoader: ReturnType<typeof createTaskVolunteerListLoader>;
   singleCharityFollowLoader: ReturnType<typeof createSingleCharityFollowLoader>;
   charityFollowersLoader: ReturnType<typeof createCharityFollowersLoader>;
-  userCharityFollowsLoader: ReturnType<typeof createUserCharityFollowsLoader>
-  charityAdminRoleLoader: ReturnType<typeof createCharityAdminRolesLoader>
+  userCharityFollowsLoader: ReturnType<typeof createUserCharityFollowsLoader>;
+  charityAdminRoleLoader: ReturnType<typeof createCharityAdminRolesLoader>;
+  userFriendsLoader: ReturnType<typeof createUserFriendsLoader>;
+  userFriendshipLoader: ReturnType<typeof createUserFriendshipLoader>;
+  userVolunteeredEventsListLoader: ReturnType<typeof createUserVolunteeredEventsListLoader>
 };

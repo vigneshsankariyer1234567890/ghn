@@ -34,6 +34,7 @@ import {
 import { Eventvolunteer } from "../entities/Eventvolunteer";
 import { Task } from "../entities/Task";
 import { Taskvolunteer } from "../entities/Taskvolunteer";
+import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
 
 @ObjectType()
 export class FieldError {
@@ -50,6 +51,12 @@ class UserResponse {
 
   @Field(() => User, { nullable: true })
   user?: User;
+
+  @Field(() => [User], { nullable: true })
+  userList?: User[];
+
+  @Field(() => Boolean)
+  success: boolean;
 }
 
 @Resolver(User)
@@ -65,7 +72,10 @@ export class UserResolver {
   }
 
   @FieldResolver(() => [Category])
-  async categories(@Root() user: User, @Ctx() { categoryLoader, userCategoryLoader }: MyContext) {
+  async categories(
+    @Root() user: User,
+    @Ctx() { categoryLoader, userCategoryLoader }: MyContext
+  ) {
     const usercategories = await userCategoryLoader.load(user.id);
 
     if (usercategories.length < 1) {
@@ -129,6 +139,67 @@ export class UserResolver {
     return await eventLoader.loadMany(eventIds);
   }
 
+  @FieldResolver(() => [Event])
+  async volunteeredEvents(
+    @Root() user: User,
+    @Ctx() { eventLoader, userVolunteeredEventsListLoader }: MyContext
+  ): Promise<(Event | Error)[]> {
+    const likedEvents = await userVolunteeredEventsListLoader.load(user.id);
+
+    if (!likedEvents) {
+      return [];
+    }
+
+    const eventIds = likedEvents.map((le) => le.eventId);
+
+    return await eventLoader.loadMany(eventIds);
+  }
+
+  @UseMiddleware(isAuth)
+  @FieldResolver(() => [User])
+  async friends(
+    @Root() user: User,
+    @Ctx() { userLoader, userFriendsLoader, req }: MyContext
+  ): Promise<(User | Error)[]> {
+    if (!req.session.userId) {
+      return [];
+    }
+
+    const friends = await userFriendsLoader.load(user.id);
+
+    if (!friends) {
+      return [];
+    }
+
+    const userids = friends.map((f) =>
+      f.user1Id === user.id ? f.user2Id : f.user1Id
+    );
+
+    return await userLoader.loadMany(userids);
+  }
+
+  @UseMiddleware(isAuth)
+  @FieldResolver(() => FriendRequestStatus, { nullable: true })
+  async friendStatus(
+    @Root() user: User,
+    @Ctx() { req, userFriendshipLoader }: MyContext
+  ): Promise<FriendRequestStatus | null> {
+    if (!req.session.userId) {
+      return null;
+    }
+
+    const fr = await userFriendshipLoader.load({
+      user1Id: user.id,
+      user2Id: req.session.userId,
+    });
+
+    if (!fr) {
+      return null;
+    }
+
+    return fr.friendreqstatus;
+  }
+
   @Query(() => User, { nullable: true })
   me(@Ctx() { req }: MyContext) {
     // you are not logged in
@@ -146,7 +217,7 @@ export class UserResolver {
   ): Promise<UserResponse> {
     const errors = validateRegister(options);
     if (errors) {
-      return { errors };
+      return { success: false, errors };
     }
 
     const hashedPassword = await argon2.hash(options.password);
@@ -170,6 +241,7 @@ export class UserResolver {
       // duplicate username error
       if (err.code === "23505") {
         return {
+          success: false,
           errors: [
             {
               field: "username",
@@ -185,7 +257,7 @@ export class UserResolver {
     // keep them logged in
     req.session.userId = user.id;
 
-    return { user };
+    return { success: true, user };
   }
 
   @Mutation(() => UserResponse)
@@ -201,6 +273,7 @@ export class UserResolver {
     );
     if (!user) {
       return {
+        success: false,
         errors: [
           {
             field: "usernameOrEmail",
@@ -212,6 +285,7 @@ export class UserResolver {
     const valid = await argon2.verify(user.password, password);
     if (!valid) {
       return {
+        success: false,
         errors: [
           {
             field: "password",
@@ -234,6 +308,7 @@ export class UserResolver {
     }
 
     return {
+      success: true,
       user,
     };
   }
@@ -262,6 +337,7 @@ export class UserResolver {
   ): Promise<UserResponse> {
     if (newPassword.length <= 2) {
       return {
+        success: false,
         errors: [
           {
             field: "newPassword",
@@ -275,6 +351,7 @@ export class UserResolver {
     const userId = await redis.get(key);
     if (!userId) {
       return {
+        success: false,
         errors: [
           {
             field: "token",
@@ -289,6 +366,7 @@ export class UserResolver {
 
     if (!user) {
       return {
+        success: false,
         errors: [
           {
             field: "token",
@@ -318,7 +396,7 @@ export class UserResolver {
       req.session.charityAdminIds = charityAdmins.map((ca) => ca.charityId);
     }
 
-    return { user };
+    return { success: true, user };
   }
 
   @Mutation(() => Boolean)
@@ -401,5 +479,316 @@ export class UserResolver {
 
     // return EventTaskContainerResponse
     return { success: true, eventContainers: evcontainers };
+  }
+
+  @Query(() => UserResponse)
+  @UseMiddleware(isAuth)
+  async viewMyPendingFriendRequests(
+    @Ctx() { req }: MyContext
+  ): Promise<UserResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not logged in." }],
+      };
+    }
+
+    // get Userfriends
+    const friends = await getConnection()
+      .createQueryBuilder()
+      .select(`uf.*`)
+      .from(Userfriend, `uf`)
+      .where(
+        `uf."user1Id" = ${req.session.userId} or uf."user2Id" = ${req.session.userId}`
+      )
+      .andWhere(
+        `uf.friendreqstatus = ${FriendRequestStatus.USER1_REQ} or uf.friendreqstatus = ${FriendRequestStatus.USER2_REQ}`
+      )
+      .getRawMany<Userfriend>();
+
+    const uids = friends.map((f) =>
+      f.user1Id === req.session.userId ? f.user2Id : f.user1Id
+    );
+
+    const userFriends = await User.findByIds(uids);
+
+    return {
+      success: true,
+      userList: userFriends,
+    };
+  }
+
+  @Mutation(() => UserResponse)
+  @UseMiddleware(isAuth)
+  async requestFriend(
+    @Arg("userId", () => Number) userId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<UserResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    if (req.session.userId === userId) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend Choice",
+            message: "You cannot send yourself a friend request.",
+          },
+        ],
+      };
+    }
+
+    const bigger = userId > req.session.userId;
+
+    const userfriend = await Userfriend.findOne({
+      where: {
+        user1Id: bigger ? req.session.userId : userId,
+        user2Id: bigger ? userId : req.session.userId,
+      },
+    });
+
+    if (userfriend) {
+      if (userfriend.friendreqstatus === FriendRequestStatus.ACCEPTED) {
+        return {
+          success: false,
+          errors: [
+            {
+              field: "Friend",
+              message: "You are already friends.",
+            },
+          ],
+        };
+      }
+
+      if (
+        userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER1 ||
+        userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER2
+      ) {
+        return {
+          success: false,
+          errors: [
+            {
+              field: "Friend",
+              message: "You have either been blocked or have blocked the user.",
+            },
+          ],
+        };
+      }
+
+      if (
+        userfriend.friendreqstatus === FriendRequestStatus.USER1_REQ ||
+        userfriend.friendreqstatus === FriendRequestStatus.USER2_REQ
+      ) {
+        return {
+          success: false,
+          errors: [
+            {
+              field: "Friend",
+              message: "There is already a pending friend request.",
+            },
+          ],
+        };
+      }
+
+      if (userfriend.friendreqstatus === FriendRequestStatus.REJECTED) {
+        await userfriend.remove();
+      }
+    }
+
+    await getConnection().transaction(async (tm) => {
+      await tm
+        .createQueryBuilder()
+        .insert()
+        .into(Userfriend)
+        .values({
+          user1Id: bigger ? req.session.userId : userId,
+          user2Id: bigger ? userId : req.session.userId,
+          friendreqstatus: bigger
+            ? FriendRequestStatus.USER1_REQ
+            : FriendRequestStatus.USER2_REQ,
+        })
+        .execute();
+    });
+
+    return { success: true };
+  }
+
+  @Mutation(() => UserResponse)
+  @UseMiddleware(isAuth)
+  async acceptFriendRequest(
+    @Arg("userId", () => Number) userId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<UserResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    if (req.session.userId === userId) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend Choice",
+            message: "You cannot send yourself a friend request.",
+          },
+        ],
+      };
+    }
+
+    const bigger = userId > req.session.userId;
+
+    const userfriend = await Userfriend.findOne({
+      where: {
+        user1Id: bigger ? req.session.userId : userId,
+        user2Id: bigger ? userId : req.session.userId,
+      },
+    });
+
+    if (!userfriend) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend Request",
+            message: "You need to send a friend request first.",
+          },
+        ],
+      };
+    }
+
+    if (userfriend.friendreqstatus === FriendRequestStatus.ACCEPTED) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend",
+            message: "You are already friends.",
+          },
+        ],
+      };
+    }
+
+    if (
+      userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER1 ||
+      userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER2
+    ) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend",
+            message: "You have either been blocked or have blocked the user.",
+          },
+        ],
+      };
+    }
+
+    if (userfriend.friendreqstatus === FriendRequestStatus.REJECTED) {
+      await userfriend.remove();
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend",
+            message: "You need to send a friend request first.",
+          },
+        ],
+      };
+    }
+
+    if (
+      (bigger &&
+        userfriend.friendreqstatus === FriendRequestStatus.USER1_REQ) ||
+      (!bigger && userfriend.friendreqstatus === FriendRequestStatus.USER2_REQ)
+    ) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend",
+            message: "User has to accept your friend request.",
+          },
+        ],
+      };
+    }
+
+    userfriend.friendreqstatus = FriendRequestStatus.ACCEPTED;
+    await userfriend.save();
+
+    return { success: true };
+  }
+
+  @Mutation(() => UserResponse)
+  @UseMiddleware(isAuth)
+  async blockUser(
+    @Arg("userId", () => Number) userId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<UserResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    if (req.session.userId === userId) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend Choice",
+            message: "You cannot send yourself a friend request.",
+          },
+        ],
+      };
+    }
+
+    const bigger = userId > req.session.userId;
+
+    const userfriend = await Userfriend.findOne({
+      where: {
+        user1Id: bigger ? req.session.userId : userId,
+        user2Id: bigger ? userId : req.session.userId,
+      },
+    });
+
+    if (!userfriend) {
+      await getConnection().transaction(async (tm) => {
+        await tm
+          .createQueryBuilder()
+          .insert()
+          .into(Userfriend)
+          .values({
+            user1Id: bigger ? req.session.userId : userId,
+            user2Id: bigger ? userId : req.session.userId,
+            friendreqstatus: bigger
+              ? FriendRequestStatus.BLOCKED_USER1
+              : FriendRequestStatus.BLOCKED_USER2,
+          });
+      });
+      return { success: true };
+    }
+
+    if (
+      userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER1 ||
+      userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER2
+    ) {
+      return { success: true };
+    }
+
+    userfriend.friendreqstatus = bigger
+      ? FriendRequestStatus.BLOCKED_USER1
+      : FriendRequestStatus.BLOCKED_USER2;
+    userfriend.save();
+
+    return { success: true };
   }
 }

@@ -25,6 +25,7 @@ import { Category } from "../entities/Category";
 // import { Charitycategory } from "../entities/Charitycategory";
 import { Charityfollow } from "../entities/Charityfollow";
 import { Event } from "../entities/Event";
+import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
 
 @ObjectType()
 class UENResponse {
@@ -94,14 +95,17 @@ export class CharityResolver {
   }
 
   @FieldResolver(() => Int, { nullable: true })
-  async followStatus(@Root() charity: Charity, @Ctx() { req, singleCharityFollowLoader }: MyContext) {
+  async followStatus(
+    @Root() charity: Charity,
+    @Ctx() { req, singleCharityFollowLoader }: MyContext
+  ) {
     if (!req.session.userId) {
       return null;
     }
     const follow = await singleCharityFollowLoader.load({
       charityId: charity.id,
-      userId: req.session.userId
-    })
+      userId: req.session.userId,
+    });
 
     return follow ? 1 : null;
   }
@@ -117,7 +121,7 @@ export class CharityResolver {
       return [];
     }
 
-    const nums = rec.map(r => r.userId);
+    const nums = rec.map((r) => r.userId);
 
     return await userLoader.loadMany(nums);
   }
@@ -131,12 +135,16 @@ export class CharityResolver {
   }
 
   @Query(() => Charity, { nullable: true })
-  charitySearchByUEN(@Arg("uen", () => String) uen: string): Promise<Charity | undefined> {
+  charitySearchByUEN(
+    @Arg("uen", () => String) uen: string
+  ): Promise<Charity | undefined> {
     return Charity.findOne({ where: { uen: uen } });
   }
 
   @Query(() => Charity, { nullable: true })
-  charitySearchByID(@Arg("id", () => Int) id: number): Promise<Charity | undefined> {
+  charitySearchByID(
+    @Arg("id", () => Int) id: number
+  ): Promise<Charity | undefined> {
     return Charity.findOne({ where: { id: id } });
   }
 
@@ -235,7 +243,6 @@ export class CharityResolver {
     @Arg("options") options: CharityDataInput,
     @Ctx() { req }: MyContext
   ): Promise<CharityResponse> {
-
     if (!req.session.userId) {
       return {
         success: false,
@@ -248,14 +255,16 @@ export class CharityResolver {
     if (!uenresp.success) {
       return {
         success: false,
-        errors: uenresp.errors
-      }
+        errors: uenresp.errors,
+      };
     }
 
     if (!uenresp.uendata) {
       return {
         success: false,
-        errors: [{field:"UEN Error", message: "UEN Validation was unsuccessful."}]
+        errors: [
+          { field: "UEN Error", message: "UEN Validation was unsuccessful." },
+        ],
       };
     }
 
@@ -264,14 +273,25 @@ export class CharityResolver {
     if (uendata.entity_name !== options.name) {
       return {
         success: false,
-        errors: [{field:"Charity Name", message: "Charity Name does not match entity registered name."}]
+        errors: [
+          {
+            field: "Charity Name",
+            message: "Charity Name does not match entity registered name.",
+          },
+        ],
       };
     }
 
     if (uendata.reg_postal_code !== options.postalcode) {
       return {
         success: false,
-        errors: [{field:"Charity Address", message: "The postal code given does not match registered postal code."}]
+        errors: [
+          {
+            field: "Charity Address",
+            message:
+              "The postal code given does not match registered postal code.",
+          },
+        ],
       };
     }
 
@@ -308,7 +328,7 @@ export class CharityResolver {
         .into(Charityfollow)
         .values({
           userId: req.session.userId,
-          charityId: charity.id
+          charityId: charity.id,
         })
         .execute();
     } catch (err) {
@@ -322,19 +342,23 @@ export class CharityResolver {
               message: "A charity with the same UEN number already exists",
             },
           ],
-          success: false
+          success: false,
         };
       }
       return {
-        errors: [{field:"Charity", message: "Unable to create charity"}], success: false
-      }
+        errors: [{ field: "Charity", message: "Unable to create charity" }],
+        success: false,
+      };
     }
     // inserting into charity admin keys in redis server
     if (!charity) {
-      return { success: false, errors: [{field:"Charity", message:"Unable to create charity"}]};
+      return {
+        success: false,
+        errors: [{ field: "Charity", message: "Unable to create charity" }],
+      };
     }
     if (!req.session.charityAdminIds) {
-      req.session.charityAdminIds = [charity.id]
+      req.session.charityAdminIds = [charity.id];
     }
     req.session.charityAdminIds.push(charity.id);
     return { charity, success: true };
@@ -416,7 +440,9 @@ export class CharityResolver {
   ): Promise<CharityResponse> {
     const { userId } = req.session;
 
-    const follow = await Charityfollow.findOne({ where: { charityId, userId, auditstat:true } });
+    const follow = await Charityfollow.findOne({
+      where: { charityId: charityId, userId: userId, auditstat: true },
+    });
 
     // user has liked post before and unliking the post
     if (follow) {
@@ -461,6 +487,96 @@ export class CharityResolver {
         );
       });
     }
-    return (follow) ? {success:false} : {success: true}; // returning unfollowing/following
+    return follow ? { success: false } : { success: true }; // returning unfollowing/following
+  }
+
+  @Mutation(() => CharityResponse)
+  @UseMiddleware(isAuth)
+  async addAdminToCharity(
+    @Arg("charityId", () => Int) charityId: number,
+    @Arg("userId", () => Int) userId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<CharityResponse> {
+    if (!req.session.userId) {
+      return {
+        errors: [
+          {
+            field: "User",
+            message: "User is not authenticated.",
+          },
+        ],
+        success: false,
+      };
+    }
+
+    if (!req.session.charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
+
+    const adids = req.session.charityAdminIds.filter((i) => i === charityId);
+
+    if (adids.length === 0) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
+
+    const follow = await Charityfollow.findOne({
+      where: { charityId: charityId, userId: userId, auditstat: true },
+    });
+
+    if (!follow) {
+      return {
+        errors: [
+          { field: "Charity", message: "User must follow charity first." },
+        ],
+        success: false,
+      };
+    }
+
+    const bigger = userId > req.session.userId;
+
+    const userfriend = await Userfriend.findOne({
+      where: {
+        user1Id: bigger ? req.session.userId : userId,
+        user2Id: bigger ? userId : req.session.userId,
+        friendreqstatus: FriendRequestStatus.ACCEPTED,
+      },
+    });
+
+    if (!userfriend) {
+      return {
+        errors: [
+          {
+            field: "Charity",
+            message: `You have to be friends with the user before being able to add as admin.`,
+          },
+        ],
+        success: false,
+      };
+    }
+
+    await getConnection().transaction(async (tm) => {
+      await tm
+        .createQueryBuilder()
+        .insert()
+        .into(Charityrolelink)
+        .values({
+          userId: userId,
+          userroleId: 1,
+          charityId: charityId,
+        })
+        .execute();
+    });
+
+    return { success: true };
   }
 }

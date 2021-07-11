@@ -7,7 +7,8 @@ export enum FriendRequestStatus {
     USER2_REQ = "user2_req",
     ACCEPTED = "accepted",
     REJECTED = "rejected",
-    BLOCKED = "blocked"
+    BLOCKED_USER1 = "blocked_user1",
+    BLOCKED_USER2 = "blocked_user2"
 }
 
 registerEnumType(FriendRequestStatus, {
