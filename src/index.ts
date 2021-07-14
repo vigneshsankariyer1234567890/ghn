@@ -132,7 +132,7 @@ const main = async () => {
         maxAge: 1000 * 60 * 60 * 24 * 365, //1 year
         httpOnly: true,
         secure: __prod__,
-        sameSite: "none",
+        sameSite: __prod__ ? "none" : "lax",
         domain: __prod__ ? ".givehub.club" : undefined,
       },
       saveUninitialized: false,

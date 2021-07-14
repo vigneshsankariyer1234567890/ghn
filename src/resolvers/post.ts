@@ -48,6 +48,22 @@ export class PostResolver {
     return like ? 1 : null;
   }
 
+  @FieldResolver(() => Boolean)
+  async creatorStatus(
+    @Root() post: Post,
+    @Ctx() { req }: MyContext
+  ): Promise<boolean> {
+    if (!req.session.userId) {
+      return false;
+    }
+
+    if (post.creatorId !== req.session.userId) {
+      return false;
+    }
+
+    return true;
+  }
+
   @Mutation(() => Boolean)
   @UseMiddleware(isAuth)
   async likePost(
@@ -102,7 +118,8 @@ export class PostResolver {
   async posts(
     @Arg("limit", () => Int) limit: number,
     // @Arg("sortByLikes") sortByLikes: boolean,
-    @Arg("cursor", () => String, { nullable: true }) cursor: string | null
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
+    @Ctx() { req }: MyContext
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
@@ -126,22 +143,35 @@ export class PostResolver {
       .limit(realLimitPlusOne)
       .getRawMany<Post>();
 
-    const eposts = await PaginatedPosts.convertPostsToEPosts(posts);
+    const eposts = await PaginatedPosts.convertPostsToEPosts(
+      posts,
+      req.session.userId
+    );
 
     return {
-      posts: eposts.slice(0, realLimit),
+      items: eposts.slice(0, realLimit),
       hasMore: posts.length === realLimitPlusOne,
+      total: posts.length,
     };
   }
 
   @Query(() => EPost, { nullable: true })
-  async post(@Arg("id", () => Int) id: number): Promise<EPost | undefined> {
+  async post(
+    @Arg("id", () => Int) id: number,
+    @Ctx() { req }: MyContext
+  ): Promise<EPost | undefined> {
     const p = await Post.findOne(id);
     if (!p) {
       return undefined;
     }
     if (!p.isEvent) {
-      return { post: p, isEvent: p.isEvent };
+      return {
+        post: p,
+        isEvent: p.isEvent,
+        creatorStatus: !req.session.userId
+          ? false
+          : p.creatorId === req.session.userId,
+      };
     }
     const eventinfo = await getConnection()
       .createQueryBuilder()
@@ -158,6 +188,9 @@ export class PostResolver {
       isEvent: p.isEvent,
       eventId: eventinfo.eventId,
       eventName: eventinfo.eventName,
+      creatorStatus: !req.session.userId
+          ? false
+          : p.creatorId === req.session.userId
     };
   }
 
@@ -171,17 +204,17 @@ export class PostResolver {
       ...input,
       creatorId: req.session.userId,
     }).save();
-    return { post: p, isEvent: false };
+    return { post: p, isEvent: false, creatorStatus: true };
   }
 
-  @Mutation(() => Post, { nullable: true })
+  @Mutation(() => EPost, { nullable: true })
   @UseMiddleware(isAuth)
   async updatePost(
     @Arg("id") id: number,
     @Arg("title") title: string,
     @Arg("text") text: string,
     @Ctx() { req }: MyContext
-  ): Promise<Post | null> {
+  ): Promise<EPost | null> {
     const result = await getConnection()
       .createQueryBuilder()
       .update(Post)
@@ -193,7 +226,7 @@ export class PostResolver {
       .returning("*")
       .execute();
 
-    return result.raw[0];
+    return {post:result.raw[0], isEvent: result.raw[0].isEvent, creatorStatus: true};
   }
 
   @Mutation(() => Boolean)

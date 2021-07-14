@@ -26,6 +26,8 @@ import { Category } from "../entities/Category";
 import { Charityfollow } from "../entities/Charityfollow";
 import { Event } from "../entities/Event";
 import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
+// import { Charitycategory } from "../entities/Charitycategory";
+import { PaginatedCharities } from "../utils/cardContainers/PaginatedCharitiesAndUsers";
 
 @ObjectType()
 class UENResponse {
@@ -51,13 +53,13 @@ class CharityResponse {
   success: boolean;
 }
 
-@ObjectType()
-class PaginatedCharities {
-  @Field(() => [Charity])
-  charities: Charity[];
-  @Field()
-  hasMore: boolean;
-}
+// @ObjectType()
+// class PaginatedCharities {
+//   @Field(() => [Charity])
+//   charities: Charity[];
+//   @Field()
+//   hasMore: boolean;
+// }
 
 @InputType()
 export class CharityDataInput {
@@ -132,6 +134,24 @@ export class CharityResolver {
     @Ctx() { charityEventsLoader }: MyContext
   ): Promise<(Event | Error)[]> {
     return await charityEventsLoader.load(charity.id);
+  }
+
+  @FieldResolver(() => Boolean)
+  async adminStatus(
+    @Root() charity: Charity,
+    @Ctx() { req }: MyContext
+  ): Promise<boolean> {
+    if (!req.session.userId) {
+      return false;
+    }
+
+    if (!req.session.charityAdminIds) {
+      return false;
+    }
+
+    const adids = req.session.charityAdminIds.reduce((a,b) => a || b === charity.id , false);
+
+    return adids;
   }
 
   @Query(() => Charity, { nullable: true })
@@ -405,8 +425,9 @@ export class CharityResolver {
       );
 
       return {
-        charities: chars.slice(0, realLimit),
+        items: chars.slice(0, realLimit),
         hasMore: chars.length === realLimitPlusOne,
+        total: chars.length,
       };
     }
 
@@ -427,8 +448,9 @@ export class CharityResolver {
     );
 
     return {
-      charities: chars.slice(0, realLimit),
+      items: chars.slice(0, realLimit),
       hasMore: chars.length === realLimitPlusOne,
+      total: chars.length,
     };
   }
 
@@ -512,18 +534,21 @@ export class CharityResolver {
     if (!req.session.charityAdminIds) {
       return {
         errors: [
-          { field: "Charity", message: "User is not an admin of charity." },
+          { field: "Charity", message: "You are not an admin of the charity." },
         ],
         success: false,
       };
     }
+
+    req.session.charityAdminIds.forEach( i => console.log(i));
+
 
     const adids = req.session.charityAdminIds.filter((i) => i === charityId);
 
     if (adids.length === 0) {
       return {
         errors: [
-          { field: "Charity", message: "User is not an admin of charity." },
+          { field: "Charity", message: "You are not an admin of the charity." },
         ],
         success: false,
       };
@@ -537,6 +562,15 @@ export class CharityResolver {
       return {
         errors: [
           { field: "Charity", message: "User must follow charity first." },
+        ],
+        success: false,
+      };
+    }
+
+    if (userId === req.session.userId) {
+      return {
+        errors: [
+          { field: "Admin", message: "You cannot add yourself as an admin." },
         ],
         success: false,
       };
@@ -564,6 +598,28 @@ export class CharityResolver {
       };
     }
 
+    const checkUserIsAdmin = await Charityrolelink.findOne({
+      where: {
+        userId: userId,
+        charityId: charityId,
+        userrole: 1,
+        auditstat: true
+      }
+    });
+
+    if (checkUserIsAdmin) {
+      return {
+        errors: [
+          {
+            field: "Charity",
+            message: `The user is already an admin of the charity.`,
+          },
+        ],
+        success: false,
+      }; 
+    }
+    
+
     await getConnection().transaction(async (tm) => {
       await tm
         .createQueryBuilder()
@@ -578,5 +634,47 @@ export class CharityResolver {
     });
 
     return { success: true };
+  }
+
+  @Query(() => PaginatedCharities)
+  async searchCharities(
+    @Arg("limit", () => Int) limit: number,
+    @Arg("categories", () => [Number]) categories: number[],
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
+    @Arg("input", () => String, { nullable: true }) input: string | null
+  ): Promise<PaginatedCharities> {
+    const realLimit = Math.min(50, limit);
+    const realLimitPlusOne = realLimit + 1;
+
+    const catcsv = categories
+      .reduce<string>((a, b) => a + b + `,`, ``)
+      .slice(0, -1);
+    
+    // actual query
+    const chars = await getConnection().query(
+      `
+      SELECT charities.* FROM (
+        SELECT DISTINCT char.* 
+        FROM charitycategory cc
+        INNER JOIN 
+        (SELECT id FROM unnest(string_to_array( ${`'`+catcsv+`'`}, ',')::int[]) AS id
+        ) cat
+        ON cat.id = cc."categoryId"
+        FULL JOIN charity char ON char.id = cc."charityId"
+        WHERE cc.auditstat = TRUE
+      ) charities
+
+      ${input ? `where charities.name ILIKE '`+input + `%'` : ""}
+      ${cursor ? input ? `and charities.name > '`+ cursor + `'`: `where charities.name > '`+ cursor + `'` : ""}
+      order by charities.name ASC
+      limit ${realLimitPlusOne}
+      `
+    );
+
+    return {
+      items: chars.slice(0, realLimit),
+      hasMore: chars.length === realLimitPlusOne,
+      total: chars.length
+    };
   }
 }

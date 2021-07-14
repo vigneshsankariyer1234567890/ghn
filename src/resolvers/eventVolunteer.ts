@@ -123,6 +123,8 @@ export class EventvolunteerResolver {
         success: false,
         hasMore: false,
         errors: [{ field: "User", message: "User is not authenticated." }],
+        items: [],
+        total: 0
       };
     }
 
@@ -133,6 +135,8 @@ export class EventvolunteerResolver {
         ],
         success: false,
         hasMore: false,
+        items: [],
+        total: 0
       };
     }
 
@@ -143,6 +147,8 @@ export class EventvolunteerResolver {
         success: false,
         hasMore: false,
         errors: [{ field: "Event", message: "That event does not exist." }],
+        items: [],
+        total: 0
       };
     }
 
@@ -155,6 +161,8 @@ export class EventvolunteerResolver {
         ],
         success: false,
         hasMore: false,
+        items: [],
+        total: 0
       };
     }
 
@@ -185,7 +193,8 @@ export class EventvolunteerResolver {
     return {
       success: true,
       hasMore: eventvolunteers.length === realLimitPlusOne,
-      eventvolunteers: eventvolunteers.slice(0, realLimit),
+      items: eventvolunteers.slice(0, realLimit),
+      total: eventvolunteers.length
     };
   }
 

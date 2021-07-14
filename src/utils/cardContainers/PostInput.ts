@@ -6,6 +6,7 @@ import {
 import { getConnection } from "typeorm";
 import { Post } from "../../entities/Post";
 import { Posteventlink } from "../../entities/Posteventlink";
+import PaginatedResponse from "./PaginatedResponse";
 
 
 @InputType()
@@ -17,14 +18,33 @@ export class PostInput {
 }
 
 @ObjectType()
-export class PaginatedPosts {
-  @Field(() => [EPost])
-  posts: EPost[];
+export class EPost {
+  @Field(() => Post)
+  post: Post;
 
-  @Field()
-  hasMore: boolean;
+  @Field(() =>  Number, {nullable: true})
+  eventId?: number;
 
-  public static async convertPostsToEPosts(postarr: Post[]): Promise<EPost[]> {
+  @Field(() => String, {nullable: true})
+  eventName?: string;
+
+  @Field(() => Boolean)
+  isEvent: boolean
+
+  @Field(() => Boolean)
+  creatorStatus: boolean
+
+  constructor(post: Post, isEvent: boolean, eventId?: number, eventName?: string) {
+    this.post = post;
+    this.isEvent = isEvent;
+    this.eventId = eventId;
+    this.eventName = eventName;
+  }
+}
+
+@ObjectType()
+export class PaginatedPosts extends PaginatedResponse(EPost) {
+  public static async convertPostsToEPosts(postarr: Post[], viewerId?: number): Promise<EPost[]> {
     
     if (postarr.length === 0) {
       return [];
@@ -57,31 +77,10 @@ export class PaginatedPosts {
         post: p, 
         isEvent: p.isEvent, 
         eventId: p.isEvent ? pidToEventInfo[p.id].eventId : undefined,
-        eventName: p.isEvent ? pidToEventInfo[p.id].eventName : undefined
+        eventName: p.isEvent ? pidToEventInfo[p.id].eventName : undefined,
+        creatorStatus: !viewerId ? false : p.creatorId === viewerId
       }
     })
-  }
-}
-
-@ObjectType()
-export class EPost {
-  @Field(() => Post)
-  post: Post;
-
-  @Field(() =>  Number, {nullable: true})
-  eventId?: number;
-
-  @Field(() => String, {nullable: true})
-  eventName?: string;
-
-  @Field(() => Boolean)
-  isEvent: boolean
-
-  constructor(post: Post, isEvent: boolean, eventId?: number, eventName?: string) {
-    this.post = post;
-    this.isEvent = isEvent;
-    this.eventId = eventId;
-    this.eventName = eventName;
   }
 }
 
