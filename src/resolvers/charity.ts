@@ -653,15 +653,19 @@ export class CharityResolver {
     // actual query
     const chars = await getConnection().query(
       `
-      SELECT charities.* FROM (
-        SELECT DISTINCT char.* 
-        FROM charitycategory cc
-        INNER JOIN 
-        (SELECT id FROM unnest(string_to_array( ${`'`+catcsv+`'`}, ',')::int[]) AS id
-        ) cat
-        ON cat.id = cc."categoryId"
-        FULL JOIN charity char ON char.id = cc."charityId"
-        WHERE cc.auditstat = TRUE
+      select * from (
+        select distinct c.* from charity c 
+        inner join charitycategory cc on c.id = cc."charityId"
+        inner join (
+          select c.id from (
+            SELECT id FROM unnest(
+              string_to_array( '${catcsv}', ',')::int[]
+            ) AS id
+          ) ca inner join category c on ca.id = c.id
+          union all 
+          select c.id from category c where ('${catcsv}'='')
+        ) cat on cat.id = cc."categoryId"
+        where cc.auditstat = true
       ) charities
 
       ${input ? `where charities.name ILIKE '`+input + `%'` : ""}
@@ -671,10 +675,33 @@ export class CharityResolver {
       `
     );
 
+    const tot = await getConnection().query(
+      `
+      select COUNT(*) as "count" from (
+        select * from (
+          select distinct c.* from charity c 
+          inner join charitycategory cc on c.id = cc."charityId"
+          inner join (
+            select c.id from (
+              SELECT id FROM unnest(
+                string_to_array( '${catcsv}', ',')::int[]
+              ) AS id
+            ) ca inner join category c on ca.id = c.id
+            union all 
+            select c.id from category c where ('${catcsv}'='')
+          ) cat on cat.id = cc."categoryId"
+          where cc.auditstat = true
+        ) charities
+
+        ${input ? `where charities.name ILIKE '`+input + `%'` : ""}
+      ) c
+      `
+    )
+
     return {
       items: chars.slice(0, realLimit),
       hasMore: chars.length === realLimitPlusOne,
-      total: chars.length
+      total: parseInt(tot[0].count)
     };
   }
 }

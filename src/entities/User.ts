@@ -7,6 +7,7 @@ import {
   Column,
   BaseEntity,
   OneToMany,
+  OneToOne,
 } from "typeorm";
 import { Post } from "./Post";
 import { Like } from "./Like";
@@ -19,6 +20,7 @@ import { Event } from "./Event";
 import { Charityfollow } from "./Charityfollow";
 import { Taskvolunteer } from "./Taskvolunteer";
 import { Userfriend } from "./Userfriend";
+import { Userprofile } from "./Userprofile";
 
 @ObjectType()
 @Entity()
@@ -73,6 +75,9 @@ export class User extends BaseEntity {
 
   @OneToMany(() => Userfriend, uf => uf.user2)
   u2: Userfriend[];
+
+  @OneToOne(() => Userprofile, userprof => userprof.user)
+  profile: Userprofile
 
   @Field(() => String)
   @CreateDateColumn()

@@ -820,34 +820,21 @@ export class UserResolver {
   @Query(() => PaginatedUsers)
   async searchUsers(
     @Arg("limit", () => Int) limit: number,
-    @Arg("categories", () => [Number]) categories: number[],
+    // @Arg("categories", () => [Number]) categories: number[],
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
     @Arg("input", () => String, { nullable: true }) input: string | null
   ): Promise<PaginatedUsers> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
 
-    const catcsv = categories
-      .reduce<string>((a, b) => a + b + `,`, ``)
-      .slice(0, -1);
+    // const catcsv = categories
+    //   .reduce<string>((a, b) => a + b + `,`, ``)
+    //   .slice(0, -1);
     
     // actual query
     const users = await getConnection().query(
       `
-      SELECT us.* FROM (
-        SELECT DISTINCT u.* 
-        FROM "user" u
-        LEFT OUTER JOIN usercategory uc ON u."id" = uc."userId"
-	      LEFT OUTER JOIN (SELECT id FROM unnest(string_to_array( '${catcsv}', ',')::int[]) AS id
-        ) cat
-        ON cat.id = uc."categoryId"
-	      WHERE uc.auditstat = TRUE
-	      UNION
-	 	    SELECT u.* FROM "user" u
-	      LEFT OUTER JOIN usercategory uc ON u."id" = uc."userId"
-	      WHERE uc.id is null
-      ) us
-
+      SELECT * FROM "user" us
       ${input ? `where us."username" ILIKE '` + input + `%'` : ""}
       ${cursor ? input ? `and us."username" > '`+ cursor + `'`: `where us."username" > '`+ cursor + `'` : ""}
       order by us."username" ASC
@@ -855,10 +842,19 @@ export class UserResolver {
       `
     );
 
+    const tot = await getConnection().query(
+      `
+      select COUNT(*) as "count" from (
+        SELECT * FROM "user" us
+        ${input ? `where us."username" ILIKE '` + input + `%'` : ""}
+      ) c
+      `
+    );
+
     return {
       items: users.slice(0, realLimit),
       hasMore: users.length === realLimitPlusOne,
-      total: users.length
+      total: parseInt(tot[0].count)
     };
   }
 }

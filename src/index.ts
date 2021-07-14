@@ -64,6 +64,8 @@ import {
 } from "./utils/dataloaders/createCharityFollowLoader";
 import { createCharityAdminRolesLoader } from "./utils/dataloaders/createCharityAdminRoleLoader";
 import { createUserFriendshipLoader, createUserFriendsLoader } from "./utils/dataloaders/createUserFriendLoader";
+import { Userprofile } from "./entities/Userprofile";
+import { Charityprofile } from "./entities/Charityprofile";
 
 const main = async () => {
   const conn = await createConnection({
@@ -90,6 +92,8 @@ const main = async () => {
       Eventlike,
       Charityfollow,
       Userfriend,
+      Userprofile,
+      Charityprofile
     ],
   });
 
