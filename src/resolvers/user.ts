@@ -9,23 +9,27 @@ import {
   FieldResolver,
   Root,
   UseMiddleware,
+  Int,
 } from "type-graphql";
 import { MyContext } from "../types";
 import { User } from "../entities/User";
 import argon2 from "argon2";
 import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from "../constants";
-import { UsernamePasswordInput } from "../utils/UsernamePasswordInput";
+import {
+  UsernamePasswordInput,
+  UserProfileUpdateInput,
+} from "../utils/UsernamePasswordInput";
 import { validateRegister } from "../utils/validateRegister";
 import { sendEmail } from "../utils/sendEmail";
 import { v4 } from "uuid";
 import { getConnection } from "typeorm";
 import { Category } from "../entities/Category";
-import { Usercategory } from "../entities/Usercategory";
+// import { Usercategory } from "../entities/Usercategory";
 import { Charity } from "../entities/Charity";
-import { Charityfollow } from "../entities/Charityfollow";
+// import { Charityfollow } from "../entities/Charityfollow";
 import { Charityrolelink } from "../entities/Charityrolelink";
 import { Event } from "../entities/Event";
-import { Eventlike } from "../entities/Eventlike";
+// import { Eventlike } from "../entities/Eventlike";
 import { isAuth } from "../middleware/isAuth";
 import {
   EventTaskContainer,
@@ -34,6 +38,10 @@ import {
 import { Eventvolunteer } from "../entities/Eventvolunteer";
 import { Task } from "../entities/Task";
 import { Taskvolunteer } from "../entities/Taskvolunteer";
+import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
+import { PaginatedUsers } from "../utils/cardContainers/PaginatedCharitiesAndUsers";
+import { Userprofile } from "../entities/Userprofile";
+import { CategoryResolver } from "./category";
 
 @ObjectType()
 export class FieldError {
@@ -50,6 +58,12 @@ class UserResponse {
 
   @Field(() => User, { nullable: true })
   user?: User;
+
+  @Field(() => [User], { nullable: true })
+  userList?: User[];
+
+  @Field(() => Boolean)
+  success: boolean;
 }
 
 @Resolver(User)
@@ -64,19 +78,20 @@ export class UserResolver {
     return "";
   }
 
-  @FieldResolver(() => [Category])
-  async categories(@Root() user: User, @Ctx() { categoryLoader }: MyContext) {
-    // n+1 problem, n posts, n sql queries executed
-    // return User.findOne(post.creatorId);
+  @FieldResolver(() => Userprofile, { nullable: true })
+  async profile(
+    @Root() user: User,
+    @Ctx() { userProfileLoader }: MyContext
+  ): Promise<Userprofile | null> {
+    return await userProfileLoader.load(user.id);
+  }
 
-    // using dataloader
-    const usercategories = await getConnection() //await Usercategory.findByIds([user.id]);
-      .createQueryBuilder()
-      .select("*")
-      .from(Usercategory, `uc`)
-      .where(`uc.auditstat = TRUE`)
-      .andWhere(`uc."userId" = :id`, { id: user.id })
-      .getRawMany<Usercategory>();
+  @FieldResolver(() => [Category])
+  async categories(
+    @Root() user: User,
+    @Ctx() { categoryLoader, userCategoryLoader }: MyContext
+  ) {
+    const usercategories = await userCategoryLoader.load(user.id);
 
     if (usercategories.length < 1) {
       return [];
@@ -90,17 +105,11 @@ export class UserResolver {
   @FieldResolver(() => [Charity])
   async followedCharities(
     @Root() user: User,
-    @Ctx() { charityLoader }: MyContext
+    @Ctx() { charityLoader, userCharityFollowsLoader }: MyContext
   ): Promise<(Charity | Error)[]> {
-    // n+1 problem, n posts, n sql queries executed
-    // return User.findOne(post.creatorId);
+    const charityfollows = await userCharityFollowsLoader.load(user.id);
 
-    // using dataloader
-    const charityfollows = await Charityfollow.find({
-      where: { userId: user.id, auditstat: true },
-    });
-
-    if (charityfollows.length < 1) {
+    if (!charityfollows) {
       return [];
     }
 
@@ -112,17 +121,15 @@ export class UserResolver {
   @FieldResolver(() => [Charity])
   async adminCharities(
     @Root() user: User,
-    @Ctx() { charityLoader }: MyContext
+    @Ctx() { charityLoader, charityAdminRoleLoader }: MyContext
   ): Promise<(Charity | Error)[]> {
     // n+1 problem, n posts, n sql queries executed
     // return User.findOne(post.creatorId);
 
     // using dataloader
-    const crls = await Charityrolelink.find({
-      where: { userId: user.id, auditstat: true },
-    });
+    const crls = await charityAdminRoleLoader.load(user.id);
 
-    if (crls.length < 1) {
+    if (!crls) {
       return [];
     }
 
@@ -134,19 +141,92 @@ export class UserResolver {
   @FieldResolver(() => [Event])
   async likedEvents(
     @Root() user: User,
-    @Ctx() { eventLoader }: MyContext
+    @Ctx() { eventLoader, userEventLikesLoader }: MyContext
   ): Promise<(Event | Error)[]> {
-    const likedEvents = await Eventlike.find({
-      where: { userId: user.id, auditstat: true },
-    });
+    const likedEvents = await userEventLikesLoader.load(user.id);
 
-    if (likedEvents.length < 1) {
+    if (!likedEvents) {
       return [];
     }
 
     const eventIds = likedEvents.map((le) => le.eventId);
 
     return await eventLoader.loadMany(eventIds);
+  }
+
+  @FieldResolver(() => [Event])
+  async volunteeredEvents(
+    @Root() user: User,
+    @Ctx() { eventLoader, userVolunteeredEventsListLoader }: MyContext
+  ): Promise<(Event | Error)[]> {
+    const likedEvents = await userVolunteeredEventsListLoader.load(user.id);
+
+    if (!likedEvents) {
+      return [];
+    }
+
+    const eventIds = likedEvents.map((le) => le.eventId);
+
+    return await eventLoader.loadMany(eventIds);
+  }
+
+  @FieldResolver(() => [User])
+  async friends(
+    @Root() user: User,
+    @Ctx() { userLoader, userFriendsLoader }: MyContext
+  ): Promise<(User | Error)[]> {
+    // if (!req.session.userId) {
+    //   return [];
+    // }
+
+    const friends = await userFriendsLoader.load(user.id);
+
+    if (!friends) {
+      return [];
+    }
+
+    const userids = friends.map((f) =>
+      f.user1Id === user.id ? f.user2Id : f.user1Id
+    );
+
+    return await userLoader.loadMany(userids);
+  }
+
+  @FieldResolver(() => FriendRequestStatus, { nullable: true })
+  async friendStatus(
+    @Root() user: User,
+    @Ctx() { req, userFriendshipLoader }: MyContext
+  ): Promise<FriendRequestStatus | null> {
+    if (!req.session.userId) {
+      return null;
+    }
+
+    const fr = await userFriendshipLoader.load({
+      user1Id: user.id,
+      user2Id: req.session.userId,
+    });
+
+    if (!fr) {
+      return null;
+    }
+
+    return fr.friendreqstatus;
+  }
+
+  @FieldResolver(() => Boolean)
+  async viewerStatus(
+    @Root() user: User,
+    @Ctx() { req }: MyContext
+  ): Promise<boolean> {
+    if (!req.session.userId) {
+      return false;
+    }
+
+    if (user.id !== req.session.userId) {
+      return false;
+    }
+
+    return true;
   }
 
   @Query(() => User, { nullable: true })
@@ -166,7 +246,7 @@ export class UserResolver {
   ): Promise<UserResponse> {
     const errors = validateRegister(options);
     if (errors) {
-      return { errors };
+      return { success: false, errors };
     }
 
     const hashedPassword = await argon2.hash(options.password);
@@ -190,6 +270,7 @@ export class UserResolver {
       // duplicate username error
       if (err.code === "23505") {
         return {
+          success: false,
           errors: [
             {
               field: "username",
@@ -205,7 +286,7 @@ export class UserResolver {
     // keep them logged in
     req.session.userId = user.id;
 
-    return { user };
+    return { success: true, user };
   }
 
   @Mutation(() => UserResponse)
@@ -214,6 +295,18 @@ export class UserResolver {
     @Arg("password") password: string,
     @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
+    if (req.session.userId) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "User",
+            message:
+              "You are already logged in. Please log out if you wish to log in as another user.",
+          },
+        ],
+      };
+    }
     const user = await User.findOne(
       usernameOrEmail.includes("@")
         ? { where: { email: usernameOrEmail } }
@@ -221,6 +314,7 @@ export class UserResolver {
     );
     if (!user) {
       return {
+        success: false,
         errors: [
           {
             field: "usernameOrEmail",
@@ -232,6 +326,7 @@ export class UserResolver {
     const valid = await argon2.verify(user.password, password);
     if (!valid) {
       return {
+        success: false,
         errors: [
           {
             field: "password",
@@ -254,6 +349,7 @@ export class UserResolver {
     }
 
     return {
+      success: true,
       user,
     };
   }
@@ -274,6 +370,84 @@ export class UserResolver {
     );
   }
 
+  @UseMiddleware(isAuth)
+  @Mutation(() => UserResponse)
+  async updateUserProfile(
+    @Arg("options") options: UserProfileUpdateInput,
+    @Ctx() { req }: MyContext
+  ): Promise<UserResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    const user = await User.findOne(req.session.userId);
+
+    if (!user) {
+      return {
+        success: false,
+        errors: [
+          { field: "Fatal", message: "Please contact the Givehub Developers." },
+        ],
+      };
+    }
+
+    if (options.categories) {
+      const resp = await CategoryResolver.updateUserCategories({categories: options.categories}, user.id);
+      if (!resp.success) {
+        return {
+          success: false,
+          errors: resp.errors
+        }
+      }
+    }
+
+    if (options.email !== user.email) {
+      user.email = options.email;
+    }
+
+    const userprof = await getConnection()
+      .createQueryBuilder()
+      .select()
+      .from(Userprofile, `up`)
+      .where(`up."userId" = :uid`, { uid: user.id })
+      .getRawOne<Userprofile>();
+
+    if (!userprof) {
+      await Userprofile.create({
+        user: user,
+        about: options.about,
+        gender: options.gender,
+        firstName: options.firstName,
+        lastName: options.lastName,
+        telegramHandle: options.telegramHandle ? options.telegramHandle : null,
+      }).save();
+    } else {
+      await getConnection().transaction(async (tm) => {
+        await tm
+          .createQueryBuilder()
+          .update(Userprofile)
+          .set({
+            about: options.about,
+            gender: options.gender,
+            firstName: options.firstName,
+            lastName: options.lastName,
+            telegramHandle: options.telegramHandle
+              ? options.telegramHandle
+              : null,
+          })
+          .where(`"userId" = :uid`, { uid: user.id })
+          .execute();
+      });
+    }
+
+    await user.save();
+
+    return { success: true, user: user };
+  }
+
   @Mutation(() => UserResponse)
   async changePassword(
     @Arg("token") token: string,
@@ -282,6 +456,7 @@ export class UserResolver {
   ): Promise<UserResponse> {
     if (newPassword.length <= 2) {
       return {
+        success: false,
         errors: [
           {
             field: "newPassword",
@@ -295,6 +470,7 @@ export class UserResolver {
     const userId = await redis.get(key);
     if (!userId) {
       return {
+        success: false,
         errors: [
           {
             field: "token",
@@ -309,6 +485,7 @@ export class UserResolver {
 
     if (!user) {
       return {
+        success: false,
         errors: [
           {
             field: "token",
@@ -338,7 +515,7 @@ export class UserResolver {
       req.session.charityAdminIds = charityAdmins.map((ca) => ca.charityId);
     }
 
-    return { user };
+    return { success: true, user };
   }
 
   @Mutation(() => Boolean)
@@ -421,5 +598,363 @@ export class UserResolver {
 
     // return EventTaskContainerResponse
     return { success: true, eventContainers: evcontainers };
+  }
+
+  @Query(() => UserResponse)
+  @UseMiddleware(isAuth)
+  async viewMyPendingFriendRequests(
+    @Ctx() { req }: MyContext
+  ): Promise<UserResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not logged in." }],
+      };
+    }
+
+    // get Userfriends
+    const friends = await getConnection()
+      .createQueryBuilder()
+      .select(`uf.*`)
+      .from(Userfriend, `uf`)
+      .where(
+        `uf."user1Id" = ${req.session.userId} or uf."user2Id" = ${req.session.userId}`
+      )
+      .andWhere(
+        `uf.friendreqstatus = 'user1_req' or uf.friendreqstatus = 'user2_req'`
+      )
+      .getRawMany<Userfriend>();
+
+    const uids = friends.map((f) =>
+      f.user1Id === req.session.userId ? f.user2Id : f.user1Id
+    );
+
+    const userFriends = await User.findByIds(uids);
+
+    return {
+      success: true,
+      userList: userFriends,
+    };
+  }
+
+  @Mutation(() => UserResponse)
+  @UseMiddleware(isAuth)
+  async requestFriend(
+    @Arg("userId", () => Number) userId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<UserResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    if (req.session.userId === userId) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend Choice",
+            message: "You cannot send yourself a friend request.",
+          },
+        ],
+      };
+    }
+
+    const bigger = userId > req.session.userId;
+
+    const userfriend = await Userfriend.findOne({
+      where: {
+        user1Id: bigger ? req.session.userId : userId,
+        user2Id: bigger ? userId : req.session.userId,
+      },
+    });
+
+    if (userfriend) {
+      if (userfriend.friendreqstatus === FriendRequestStatus.ACCEPTED) {
+        return {
+          success: false,
+          errors: [
+            {
+              field: "Friend",
+              message: "You are already friends.",
+            },
+          ],
+        };
+      }
+
+      if (
+        userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER1 ||
+        userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER2
+      ) {
+        return {
+          success: false,
+          errors: [
+            {
+              field: "Friend",
+              message: "You have either been blocked or have blocked the user.",
+            },
+          ],
+        };
+      }
+
+      if (
+        userfriend.friendreqstatus === FriendRequestStatus.USER1_REQ ||
+        userfriend.friendreqstatus === FriendRequestStatus.USER2_REQ
+      ) {
+        return {
+          success: false,
+          errors: [
+            {
+              field: "Friend",
+              message: "There is already a pending friend request.",
+            },
+          ],
+        };
+      }
+
+      if (userfriend.friendreqstatus === FriendRequestStatus.REJECTED) {
+        await userfriend.remove();
+      }
+    }
+
+    await getConnection().transaction(async (tm) => {
+      await tm
+        .createQueryBuilder()
+        .insert()
+        .into(Userfriend)
+        .values({
+          user1Id: bigger ? req.session.userId : userId,
+          user2Id: bigger ? userId : req.session.userId,
+          friendreqstatus: bigger
+            ? FriendRequestStatus.USER1_REQ
+            : FriendRequestStatus.USER2_REQ,
+        })
+        .execute();
+    });
+
+    return { success: true };
+  }
+
+  @Mutation(() => UserResponse)
+  @UseMiddleware(isAuth)
+  async acceptFriendRequest(
+    @Arg("userId", () => Number) userId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<UserResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    if (req.session.userId === userId) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend Choice",
+            message: "You cannot send yourself a friend request.",
+          },
+        ],
+      };
+    }
+
+    const bigger = userId > req.session.userId;
+
+    const userfriend = await Userfriend.findOne({
+      where: {
+        user1Id: bigger ? req.session.userId : userId,
+        user2Id: bigger ? userId : req.session.userId,
+      },
+    });
+
+    if (!userfriend) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend Request",
+            message: "You need to send a friend request first.",
+          },
+        ],
+      };
+    }
+
+    if (userfriend.friendreqstatus === FriendRequestStatus.ACCEPTED) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend",
+            message: "You are already friends.",
+          },
+        ],
+      };
+    }
+
+    if (
+      userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER1 ||
+      userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER2
+    ) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend",
+            message: "You have either been blocked or have blocked the user.",
+          },
+        ],
+      };
+    }
+
+    if (userfriend.friendreqstatus === FriendRequestStatus.REJECTED) {
+      await userfriend.remove();
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend",
+            message: "You need to send a friend request first.",
+          },
+        ],
+      };
+    }
+
+    if (
+      (bigger &&
+        userfriend.friendreqstatus === FriendRequestStatus.USER1_REQ) ||
+      (!bigger && userfriend.friendreqstatus === FriendRequestStatus.USER2_REQ)
+    ) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend",
+            message: "User has to accept your friend request.",
+          },
+        ],
+      };
+    }
+
+    userfriend.friendreqstatus = FriendRequestStatus.ACCEPTED;
+    await userfriend.save();
+
+    return { success: true };
+  }
+
+  @Mutation(() => UserResponse)
+  @UseMiddleware(isAuth)
+  async blockUser(
+    @Arg("userId", () => Number) userId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<UserResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    if (req.session.userId === userId) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Friend Choice",
+            message: "You cannot send yourself a friend request.",
+          },
+        ],
+      };
+    }
+
+    const bigger = userId > req.session.userId;
+
+    const userfriend = await Userfriend.findOne({
+      where: {
+        user1Id: bigger ? req.session.userId : userId,
+        user2Id: bigger ? userId : req.session.userId,
+      },
+    });
+
+    if (!userfriend) {
+      await getConnection().transaction(async (tm) => {
+        await tm
+          .createQueryBuilder()
+          .insert()
+          .into(Userfriend)
+          .values({
+            user1Id: bigger ? req.session.userId : userId,
+            user2Id: bigger ? userId : req.session.userId,
+            friendreqstatus: bigger
+              ? FriendRequestStatus.BLOCKED_USER1
+              : FriendRequestStatus.BLOCKED_USER2,
+          });
+      });
+      return { success: true };
+    }
+
+    if (
+      userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER1 ||
+      userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER2
+    ) {
+      return { success: true };
+    }
+
+    userfriend.friendreqstatus = bigger
+      ? FriendRequestStatus.BLOCKED_USER1
+      : FriendRequestStatus.BLOCKED_USER2;
+    userfriend.save();
+
+    return { success: true };
+  }
+
+  @Query(() => PaginatedUsers)
+  async searchUsers(
+    @Arg("limit", () => Int) limit: number,
+    // @Arg("categories", () => [Number]) categories: number[],
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
+    @Arg("input", () => String, { nullable: true }) input: string | null
+  ): Promise<PaginatedUsers> {
+    const realLimit = Math.min(50, limit);
+    const realLimitPlusOne = realLimit + 1;
+
+    // const catcsv = categories
+    //   .reduce<string>((a, b) => a + b + `,`, ``)
+    //   .slice(0, -1);
+
+    // actual query
+    const users = await getConnection().query(
+      `
+      SELECT * FROM "user" us
+      ${input ? `where us."username" ILIKE '` + input + `%'` : ""}
+      ${
+        cursor
+          ? input
+            ? `and us."username" > '` + cursor + `'`
+            : `where us."username" > '` + cursor + `'`
+          : ""
+      }
+      order by us."username" ASC
+      limit ${realLimitPlusOne}
+      `
+    );
+
+    const tot = await getConnection().query(
+      `
+      select COUNT(*) as "count" from (
+        SELECT * FROM "user" us
+        ${input ? `where us."username" ILIKE '` + input + `%'` : ""}
+      ) c
+      `
+    );
+
+    return {
+      items: users.slice(0, realLimit),
+      hasMore: users.length === realLimitPlusOne,
+      total: parseInt(tot[0].count),
+    };
   }
 }

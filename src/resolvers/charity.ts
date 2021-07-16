@@ -3,7 +3,6 @@ import {
   Ctx,
   Field,
   FieldResolver,
-  InputType,
   Int,
   Mutation,
   ObjectType,
@@ -22,10 +21,18 @@ import { getConnection } from "typeorm";
 import { Charityrolelink } from "../entities/Charityrolelink";
 import { User } from "../entities/User";
 import { Category } from "../entities/Category";
-import { Charitycategory } from "../entities/Charitycategory";
+// import { Charitycategory } from "../entities/Charitycategory";
 import { Charityfollow } from "../entities/Charityfollow";
 import { Event } from "../entities/Event";
-import convertCharIdsToUserIds from "../utils/dataloaders/createCharityFollowLoader";
+import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
+// import { Charitycategory } from "../entities/Charitycategory";
+import { PaginatedCharities } from "../utils/cardContainers/PaginatedCharitiesAndUsers";
+import {
+  CharityDataInput,
+  CharityProfileUpdateInput,
+} from "../utils/CharityDataInput";
+import { Charityprofile } from "../entities/Charityprofile";
+import { CategoryResolver } from "./category";
 
 @ObjectType()
 class UENResponse {
@@ -51,26 +58,6 @@ class CharityResponse {
   success: boolean;
 }
 
-@ObjectType()
-class PaginatedCharities {
-  @Field(() => [Charity])
-  charities: Charity[];
-  @Field()
-  hasMore: boolean;
-}
-
-@InputType()
-export class CharityDataInput {
-  @Field()
-  uen!: string;
-  @Field()
-  name!: string;
-  @Field()
-  physicalAddress!: string;
-  @Field()
-  postalcode!: string;
-}
-
 @Resolver(Charity)
 export class CharityResolver {
   @FieldResolver(() => User)
@@ -78,18 +65,20 @@ export class CharityResolver {
     return userLoader.load(charity.charitycreatorId);
   }
 
+  @FieldResolver(() => Charityprofile, { nullable: true })
+  async profile(
+    @Root() charity: Charity,
+    @Ctx() { charityProfileLoader }: MyContext
+  ): Promise<Charityprofile | null> {
+    return await charityProfileLoader.load(charity.id);
+  }
+
   @FieldResolver(() => [Category])
   async categories(
     @Root() charity: Charity,
-    @Ctx() { categoryLoader }: MyContext
+    @Ctx() { categoryLoader, charityCategoryLoader }: MyContext
   ): Promise<(Category | Error)[]> {
-    // n+1 problem, n posts, n sql queries executed
-    // return User.findOne(post.creatorId);
-
-    // using dataloader
-    const charitycategories = await Charitycategory.find({
-      where: { charityId: charity.id },
-    });
+    const charitycategories = await charityCategoryLoader.load(charity.id);
 
     if (charitycategories.length < 1) {
       return [];
@@ -101,11 +90,17 @@ export class CharityResolver {
   }
 
   @FieldResolver(() => Int, { nullable: true })
-  async followStatus(@Root() charity: Charity, @Ctx() { req }: MyContext) {
+  async followStatus(
+    @Root() charity: Charity,
+    @Ctx() { req, singleCharityFollowLoader }: MyContext
+  ) {
     if (!req.session.userId) {
       return null;
     }
-    const follow = await Charityfollow.findOne({where: {charityId: charity.id, userId: req.session.userId, auditstat: true}});
+    const follow = await singleCharityFollowLoader.load({
+      charityId: charity.id,
+      userId: req.session.userId,
+    });
 
     return follow ? 1 : null;
   }
@@ -113,14 +108,15 @@ export class CharityResolver {
   @FieldResolver(() => [User])
   async followers(
     @Root() charity: Charity,
-    @Ctx() { userLoader }: MyContext
+    @Ctx() { userLoader, charityFollowersLoader }: MyContext
   ): Promise<(User | Error)[]> {
-    // n+1 problem, n posts, n sql queries executed
-    // return User.findOne(post.creatorId);
-    // using dataloader
-    const rec: Record<number, number[]> = await convertCharIdsToUserIds([charity.id]);
+    const rec = await charityFollowersLoader.load(charity.id);
 
-    const nums = rec[charity.id];
+    if (!rec) {
+      return [];
+    }
+
+    const nums = rec.map((r) => r.userId);
 
     return await userLoader.loadMany(nums);
   }
@@ -128,28 +124,43 @@ export class CharityResolver {
   @FieldResolver(() => [Event])
   async charityEvents(
     @Root() charity: Charity,
-    @Ctx() { eventLoader }: MyContext
+    @Ctx() { charityEventsLoader }: MyContext
   ): Promise<(Event | Error)[]> {
-    const events = await Event.find({
-      where: {charityId: charity.id, auditstat: true}
-    })
+    return await charityEventsLoader.load(charity.id);
+  }
 
-    if (events.length < 1) {
-      return [];
+  @FieldResolver(() => Boolean)
+  async adminStatus(
+    @Root() charity: Charity,
+    @Ctx() { req }: MyContext
+  ): Promise<boolean> {
+    if (!req.session.userId) {
+      return false;
     }
 
-    const eventIds = events.map(e => e.id);
+    if (!req.session.charityAdminIds) {
+      return false;
+    }
 
-    return await eventLoader.loadMany(eventIds);
+    const adids = req.session.charityAdminIds.reduce(
+      (a, b) => a || b === charity.id,
+      false
+    );
+
+    return adids;
   }
 
   @Query(() => Charity, { nullable: true })
-  charitySearchByUEN(@Arg("uen", () => String) uen: string): Promise<Charity | undefined> {
+  charitySearchByUEN(
+    @Arg("uen", () => String) uen: string
+  ): Promise<Charity | undefined> {
     return Charity.findOne({ where: { uen: uen } });
   }
 
   @Query(() => Charity, { nullable: true })
-  charitySearchByID(@Arg("id", () => Int) id: number): Promise<Charity | undefined> {
+  charitySearchByID(
+    @Arg("id", () => Int) id: number
+  ): Promise<Charity | undefined> {
     return Charity.findOne({ where: { id: id } });
   }
 
@@ -248,11 +259,55 @@ export class CharityResolver {
     @Arg("options") options: CharityDataInput,
     @Ctx() { req }: MyContext
   ): Promise<CharityResponse> {
-
     if (!req.session.userId) {
       return {
         success: false,
         errors: [{ field: "User", message: "User is not authenticated." }],
+      };
+    }
+
+    const uenresp: UENResponse = await this.checkUENNumber(options.uen);
+
+    if (!uenresp.success) {
+      return {
+        success: false,
+        errors: uenresp.errors,
+      };
+    }
+
+    if (!uenresp.uendata) {
+      return {
+        success: false,
+        errors: [
+          { field: "UEN Error", message: "UEN Validation was unsuccessful." },
+        ],
+      };
+    }
+
+    const uendata: UENData = uenresp.uendata;
+
+    if (uendata.entity_name !== options.name) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Charity Name",
+            message: "Charity Name does not match entity registered name.",
+          },
+        ],
+      };
+    }
+
+    if (uendata.reg_postal_code !== options.postalcode) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Charity Address",
+            message:
+              "The postal code given does not match registered postal code.",
+          },
+        ],
       };
     }
 
@@ -289,7 +344,7 @@ export class CharityResolver {
         .into(Charityfollow)
         .values({
           userId: req.session.userId,
-          charityId: charity.id
+          charityId: charity.id,
         })
         .execute();
     } catch (err) {
@@ -303,22 +358,126 @@ export class CharityResolver {
               message: "A charity with the same UEN number already exists",
             },
           ],
-          success: false
+          success: false,
         };
       }
       return {
-        errors: [{field:"Charity", message: "Unable to create charity"}], success: false
-      }
+        errors: [{ field: "Charity", message: "Unable to create charity" }],
+        success: false,
+      };
     }
     // inserting into charity admin keys in redis server
     if (!charity) {
-      return { success: false, errors: [{field:"Charity", message:"Unable to create charity"}]};
+      return {
+        success: false,
+        errors: [{ field: "Charity", message: "Unable to create charity" }],
+      };
     }
     if (!req.session.charityAdminIds) {
-      req.session.charityAdminIds = [charity.id]
+      req.session.charityAdminIds = [charity.id];
     }
     req.session.charityAdminIds.push(charity.id);
     return { charity, success: true };
+  }
+
+  @UseMiddleware(isAuth)
+  @Mutation(() => CharityResponse)
+  async updateCharityProfile(
+    @Arg("charityId") charityId: number,
+    @Arg("options") options: CharityProfileUpdateInput,
+    @Ctx() { req }: MyContext
+  ): Promise<CharityResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    if (!req.session.charityAdminIds) {
+      return {
+        success: false,
+        errors: [
+          { field: "User", message: "User is not an admin of the charity" },
+        ],
+      };
+    }
+
+    const adid = req.session.charityAdminIds.reduce(
+      (a, b) => a || b === charityId,
+      false
+    );
+
+    if (!adid) {
+      return {
+        success: false,
+        errors: [
+          { field: "User", message: "User is not an admin of the charity" },
+        ],
+      };
+    }
+
+    const charity = await Charity.findOne(charityId);
+
+    if (!charity) {
+      return {
+        success: false,
+        errors: [
+          { field: "Fatal", message: "Please contact the Givehub Developers." },
+        ],
+      };
+    }
+
+    if (options.categories) {
+      const resp = await CategoryResolver.updateCharityCategories({categories: options.categories}, charity.id);
+      if (!resp.success) {
+        return {
+          success: false,
+          errors: resp.errors
+        }
+      }
+    }
+
+    charity.name = charity.name !== options.name ? options.name : charity.name;
+    charity.physicalAddress =
+      charity.physicalAddress !== options.physicalAddress
+        ? options.physicalAddress
+        : charity.physicalAddress;
+    charity.postalcode =
+      charity.postalcode !== options.postalcode
+        ? options.postalcode
+        : charity.postalcode;
+
+    const charityprofs = await getConnection()
+      .createQueryBuilder()
+      .select()
+      .from(Charityprofile, `cp`)
+      .where(`cp."charityId" = :cid`, { cid: charity.id })
+      .getRawOne<Charityprofile>();
+
+    if (!charityprofs) {
+      await Charityprofile.create({
+        charity: charity,
+        about: options.about,
+        links: options.links ? options.links : null,
+      }).save();
+    } else {
+      await getConnection().transaction(async (tm) => {
+        await tm
+          .createQueryBuilder()
+          .update(Charityprofile)
+          .set({
+            about: options.about,
+            links: options.links ? options.links : null,
+          })
+          .where(`"charityId" = :cid`, { cid: charity.id })
+          .execute();
+      });
+    }
+
+    await charity.save();
+
+    return { success: true, charity: charity };
   }
 
   @Query(() => PaginatedCharities)
@@ -362,8 +521,9 @@ export class CharityResolver {
       );
 
       return {
-        charities: chars.slice(0, realLimit),
+        items: chars.slice(0, realLimit),
         hasMore: chars.length === realLimitPlusOne,
+        total: chars.length,
       };
     }
 
@@ -384,8 +544,9 @@ export class CharityResolver {
     );
 
     return {
-      charities: chars.slice(0, realLimit),
+      items: chars.slice(0, realLimit),
       hasMore: chars.length === realLimitPlusOne,
+      total: chars.length,
     };
   }
 
@@ -397,7 +558,9 @@ export class CharityResolver {
   ): Promise<CharityResponse> {
     const { userId } = req.session;
 
-    const follow = await Charityfollow.findOne({ where: { charityId, userId, auditstat:true } });
+    const follow = await Charityfollow.findOne({
+      where: { charityId: charityId, userId: userId, auditstat: true },
+    });
 
     // user has liked post before and unliking the post
     if (follow) {
@@ -442,6 +605,203 @@ export class CharityResolver {
         );
       });
     }
-    return (follow) ? {success:false} : {success: true}; // returning unfollowing/following
+    return follow ? { success: false } : { success: true }; // returning unfollowing/following
+  }
+
+  @Mutation(() => CharityResponse)
+  @UseMiddleware(isAuth)
+  async addAdminToCharity(
+    @Arg("charityId", () => Int) charityId: number,
+    @Arg("userId", () => Int) userId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<CharityResponse> {
+    if (!req.session.userId) {
+      return {
+        errors: [
+          {
+            field: "User",
+            message: "User is not authenticated.",
+          },
+        ],
+        success: false,
+      };
+    }
+
+    if (!req.session.charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "You are not an admin of the charity." },
+        ],
+        success: false,
+      };
+    }
+
+    req.session.charityAdminIds.forEach((i) => console.log(i));
+
+    const adids = req.session.charityAdminIds.filter((i) => i === charityId);
+
+    if (adids.length === 0) {
+      return {
+        errors: [
+          { field: "Charity", message: "You are not an admin of the charity." },
+        ],
+        success: false,
+      };
+    }
+
+    const follow = await Charityfollow.findOne({
+      where: { charityId: charityId, userId: userId, auditstat: true },
+    });
+
+    if (!follow) {
+      return {
+        errors: [
+          { field: "Charity", message: "User must follow charity first." },
+        ],
+        success: false,
+      };
+    }
+
+    if (userId === req.session.userId) {
+      return {
+        errors: [
+          { field: "Admin", message: "You cannot add yourself as an admin." },
+        ],
+        success: false,
+      };
+    }
+
+    const bigger = userId > req.session.userId;
+
+    const userfriend = await Userfriend.findOne({
+      where: {
+        user1Id: bigger ? req.session.userId : userId,
+        user2Id: bigger ? userId : req.session.userId,
+        friendreqstatus: FriendRequestStatus.ACCEPTED,
+      },
+    });
+
+    if (!userfriend) {
+      return {
+        errors: [
+          {
+            field: "Charity",
+            message: `You have to be friends with the user before being able to add as admin.`,
+          },
+        ],
+        success: false,
+      };
+    }
+
+    const checkUserIsAdmin = await Charityrolelink.findOne({
+      where: {
+        userId: userId,
+        charityId: charityId,
+        userrole: 1,
+        auditstat: true,
+      },
+    });
+
+    if (checkUserIsAdmin) {
+      return {
+        errors: [
+          {
+            field: "Charity",
+            message: `The user is already an admin of the charity.`,
+          },
+        ],
+        success: false,
+      };
+    }
+
+    await getConnection().transaction(async (tm) => {
+      await tm
+        .createQueryBuilder()
+        .insert()
+        .into(Charityrolelink)
+        .values({
+          userId: userId,
+          userroleId: 1,
+          charityId: charityId,
+        })
+        .execute();
+    });
+
+    return { success: true };
+  }
+
+  @Query(() => PaginatedCharities)
+  async searchCharities(
+    @Arg("limit", () => Int) limit: number,
+    @Arg("categories", () => [Number]) categories: number[],
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
+    @Arg("input", () => String, { nullable: true }) input: string | null
+  ): Promise<PaginatedCharities> {
+    const realLimit = Math.min(50, limit);
+    const realLimitPlusOne = realLimit + 1;
+
+    const catcsv = categories
+      .reduce<string>((a, b) => a + b + `,`, ``)
+      .slice(0, -1);
+
+    // actual query
+    const chars = await getConnection().query(
+      `
+      select * from (
+        select distinct c.* from charity c 
+        inner join charitycategory cc on c.id = cc."charityId"
+        inner join (
+          select c.id from (
+            SELECT id FROM unnest(
+              string_to_array( '${catcsv}', ',')::int[]
+            ) AS id
+          ) ca inner join category c on ca.id = c.id
+          union all 
+          select c.id from category c where ('${catcsv}'='')
+        ) cat on cat.id = cc."categoryId"
+        where cc.auditstat = true
+      ) charities
+
+      ${input ? `where charities.name ILIKE '` + input + `%'` : ""}
+      ${
+        cursor
+          ? input
+            ? `and charities.name > '` + cursor + `'`
+            : `where charities.name > '` + cursor + `'`
+          : ""
+      }
+      order by charities.name ASC
+      limit ${realLimitPlusOne}
+      `
+    );
+
+    const tot = await getConnection().query(
+      `
+      select COUNT(*) as "count" from (
+        select * from (
+          select distinct c.* from charity c 
+          inner join charitycategory cc on c.id = cc."charityId"
+          inner join (
+            select c.id from (
+              SELECT id FROM unnest(
+                string_to_array( '${catcsv}', ',')::int[]
+              ) AS id
+            ) ca inner join category c on ca.id = c.id
+            union all 
+            select c.id from category c where ('${catcsv}'='')
+          ) cat on cat.id = cc."categoryId"
+          where cc.auditstat = true
+        ) charities
+
+        ${input ? `where charities.name ILIKE '` + input + `%'` : ""}
+      ) c
+      `
+    );
+
+    return {
+      items: chars.slice(0, realLimit),
+      hasMore: chars.length === realLimitPlusOne,
+      total: parseInt(tot[0].count),
+    };
   }
 }

@@ -11,11 +11,11 @@ export const createEventVolunteerListLoader = (
       .map<string>((k) => `(ev."eventId" = ${k})`)
       .reduce<string>((a, b) => a + ` or ` + b, ``)
       .slice(3);
-    console.log(sqlquerystring);
+    // console.log(sqlquerystring);
     const evolun = await createQueryBuilder()
-      .select()
+      .select(`ev.*`)
       .from(Eventvolunteer, `ev`)
-      .where(`(`+sqlquerystring+`)`)
+      .where(`(` + sqlquerystring + `)`)
       .andWhere(`ev.auditstat = true`)
       .getRawMany<Eventvolunteer>();
 
@@ -37,4 +37,30 @@ export const createEventVolunteerListLoader = (
 
     // returns grouped array
     return keys.map((key) => evIdsToEv[key]);
+  });
+
+export const createUserVolunteeredEventsListLoader = () =>
+  new DataLoader<number, Eventvolunteer[]>(async (userIds) => {
+    const sqlquerystring = userIds
+      .map<string>((k) => `(ev."userId" = ${k})`)
+      .reduce<string>((a, b) => a + ` or ` + b, ``)
+      .slice(3);
+
+    const evolun = await createQueryBuilder()
+      .select(`ev.*`)
+      .from(Eventvolunteer, `ev`)
+      .where(sqlquerystring)
+      .andWhere(`ev.auditstat = true`)
+      .andWhere(`ev.adminapproval = ${AdminApproval.APPROVED}`)
+      .getRawMany<Eventvolunteer>();
+
+    const evIdsToEv: Record<number, Eventvolunteer[]> = {};
+    userIds.forEach((k) => {
+      // grouping by event id by filtering
+      const f = evolun.filter((ev) => ev.userId === k);
+      evIdsToEv[k] = f
+    });
+
+    // returns grouped array
+    return userIds.map((key) => evIdsToEv[key]);
   });

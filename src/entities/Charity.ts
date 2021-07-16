@@ -1,7 +1,8 @@
 import { Field, ObjectType, Int } from "type-graphql";
-import { BaseEntity, Column, CreateDateColumn, Entity, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import { BaseEntity, Column, CreateDateColumn, Entity, ManyToOne, OneToMany, OneToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { Charitycategory } from "./Charitycategory";
 import { Charityfollow } from "./Charityfollow";
+import { Charityprofile } from "./Charityprofile";
 import { Charityrolelink } from "./Charityrolelink";
 import { Event } from "./Event";
 import { Posteventlink } from "./Posteventlink";
@@ -62,6 +63,9 @@ export class Charity extends BaseEntity {
 
   @Column({type: "boolean", default:true})
   auditstat!: boolean
+
+  @OneToOne(() => Charityprofile, charityprof => charityprof.charity)
+  profile: Charityprofile
 
   @Field(() => String)
   @CreateDateColumn()

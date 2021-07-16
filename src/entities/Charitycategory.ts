@@ -23,7 +23,7 @@ export class Charitycategory extends BaseEntity {
   @Column()
   categoryId: number;
   
-  @ManyToOne(() => Category, cat => cat.categories)
+  @ManyToOne(() => Category, cat => cat.charityCategories)
   category: Category;
  
   @Column({type: "boolean", default:true})

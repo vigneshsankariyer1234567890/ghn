@@ -21,6 +21,7 @@ import {
   EPost,
 } from "../utils/cardContainers/PostInput";
 import { Posteventlink } from "../entities/Posteventlink";
+import { LikeResponse } from "../utils/cardContainers/LikeResponse";
 
 @Resolver(Post)
 export class PostResolver {
@@ -48,13 +49,38 @@ export class PostResolver {
     return like ? 1 : null;
   }
 
-  @Mutation(() => Boolean)
+  @FieldResolver(() => Boolean)
+  async creatorStatus(
+    @Root() post: Post,
+    @Ctx() { req }: MyContext
+  ): Promise<boolean> {
+    if (!req.session.userId) {
+      return false;
+    }
+
+    if (post.creatorId !== req.session.userId) {
+      return false;
+    }
+
+    return true;
+  }
+
+  @Mutation(() => LikeResponse)
   @UseMiddleware(isAuth)
   async likePost(
     @Arg("postId", () => Int) postId: number,
     @Ctx() { req }: MyContext
-  ) {
+  ): Promise<LikeResponse> {
     const { userId } = req.session;
+
+    const post = await Post.findOne({ where: { id: postId, auditstat: true } });
+
+    if (!post) {
+      return {
+        success: false,
+        errors: [{ field: "Post", message: "That post does not exist." }],
+      };
+    }
 
     const like = await Like.findOne({ where: { postId, userId } });
 
@@ -65,15 +91,21 @@ export class PostResolver {
 
         await tm.delete(Like, { userId: userId, postId: postId });
 
-        await tm.query(
-          `
-                update post 
-                set "likeNumber" = "likeNumber" - 1
-                where id = $1
-                and "likeNumber">0
-            `,
-          [postId]
-        );
+        // await tm.query(
+        //   `
+        //         update post
+        //         set "likeNumber" = "likeNumber" - 1
+        //         where id = $1
+        //         and "likeNumber">0
+        //     `,
+        //   [postId]
+        // );
+
+        if (post.likeNumber > 0) {
+          post.likeNumber = post.likeNumber - 1;
+        }
+
+        await post.save();
       });
     } else if (!like) {
       //has never liked before
@@ -85,24 +117,40 @@ export class PostResolver {
           .values({ userId: userId, postId: postId })
           .execute();
 
-        await tm.query(
-          `
-                update post 
-                set "likeNumber" = "likeNumber" + 1
-                where id = $1
-            `,
-          [postId]
-        );
+        // await tm.query(
+        //   `
+        //         update post
+        //         set "likeNumber" = "likeNumber" + 1
+        //         where id = $1
+        //     `,
+        //   [postId]
+        // );
+        post.likeNumber = post.likeNumber + 1;
+        await post.save();
       });
     }
-    return like ? false : true;
+
+    return like
+      ? {
+          success: true,
+          voteStatus: false,
+          id: postId,
+          likeNumber: post.likeNumber,
+        }
+      : {
+          success: true,
+          voteStatus: true,
+          id: postId,
+          likeNumber: post.likeNumber,
+        };
   }
 
   @Query(() => PaginatedPosts)
   async posts(
     @Arg("limit", () => Int) limit: number,
     // @Arg("sortByLikes") sortByLikes: boolean,
-    @Arg("cursor", () => String, { nullable: true }) cursor: string | null
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
+    @Ctx() { req }: MyContext
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
@@ -126,22 +174,35 @@ export class PostResolver {
       .limit(realLimitPlusOne)
       .getRawMany<Post>();
 
-    const eposts = await PaginatedPosts.convertPostsToEPosts(posts);
+    const eposts = await PaginatedPosts.convertPostsToEPosts(
+      posts,
+      req.session.userId
+    );
 
     return {
-      posts: eposts.slice(0, realLimit),
+      items: eposts.slice(0, realLimit),
       hasMore: posts.length === realLimitPlusOne,
+      total: posts.length,
     };
   }
 
   @Query(() => EPost, { nullable: true })
-  async post(@Arg("id", () => Int) id: number): Promise<EPost | undefined> {
+  async post(
+    @Arg("id", () => Int) id: number,
+    @Ctx() { req }: MyContext
+  ): Promise<EPost | undefined> {
     const p = await Post.findOne(id);
     if (!p) {
       return undefined;
     }
     if (!p.isEvent) {
-      return { post: p, isEvent: p.isEvent };
+      return {
+        post: p,
+        isEvent: p.isEvent,
+        creatorStatus: !req.session.userId
+          ? false
+          : p.creatorId === req.session.userId,
+      };
     }
     const eventinfo = await getConnection()
       .createQueryBuilder()
@@ -158,6 +219,9 @@ export class PostResolver {
       isEvent: p.isEvent,
       eventId: eventinfo.eventId,
       eventName: eventinfo.eventName,
+      creatorStatus: !req.session.userId
+        ? false
+        : p.creatorId === req.session.userId,
     };
   }
 
@@ -171,17 +235,17 @@ export class PostResolver {
       ...input,
       creatorId: req.session.userId,
     }).save();
-    return { post: p, isEvent: false };
+    return { post: p, isEvent: false, creatorStatus: true };
   }
 
-  @Mutation(() => Post, { nullable: true })
+  @Mutation(() => EPost, { nullable: true })
   @UseMiddleware(isAuth)
   async updatePost(
     @Arg("id") id: number,
     @Arg("title") title: string,
     @Arg("text") text: string,
     @Ctx() { req }: MyContext
-  ): Promise<Post | null> {
+  ): Promise<EPost | null> {
     const result = await getConnection()
       .createQueryBuilder()
       .update(Post)
@@ -193,7 +257,11 @@ export class PostResolver {
       .returning("*")
       .execute();
 
-    return result.raw[0];
+    return {
+      post: result.raw[0],
+      isEvent: result.raw[0].isEvent,
+      creatorStatus: true,
+    };
   }
 
   @Mutation(() => Boolean)
@@ -217,8 +285,8 @@ export class PostResolver {
       await tm
         .createQueryBuilder()
         .delete()
-        .from(Like, `l`)
-        .where(`l."postId" = :post`, { post: id })
+        .from(Like)
+        .where(`"postId" = :post`, { post: id })
         .execute();
     });
 
@@ -254,8 +322,8 @@ export async function deletePosts(postIds: number[]): Promise<void> {
     await tm
       .createQueryBuilder()
       .delete()
-      .from(Like, `l`)
-      .where(`l."postId" in (:posts)`, { posts: postIds })
+      .from(Like)
+      .where(`l."postId" in (:...posts)`, { posts: postIds })
       .execute();
   });
 

@@ -1,5 +1,6 @@
 import { Field, InputType, ObjectType } from "type-graphql";
 import { Event } from "../../entities/Event";
+import PaginatedResponse from "./PaginatedResponse";
 
 @InputType()
 export class EventInput {
@@ -20,9 +21,8 @@ export class EventInput {
 }
 
 @ObjectType()
-export class PaginatedEvents {
-  @Field(() => [Event])
-  events: Event[];
-  @Field()
-  hasMore: boolean;
+export class PaginatedEvents extends PaginatedResponse(Event) {
+
 }
+
+

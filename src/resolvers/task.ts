@@ -43,6 +43,26 @@ export class TaskResolver {
     return userLoader.loadMany(tv.map(t => t.userId));
   }
 
+  @FieldResolver(() => Boolean)
+  async adminStatus(
+    @Root() task: Task,
+    @Ctx() { req, eventLoader }: MyContext
+  ): Promise<boolean> {
+    if (!req.session.userId) {
+      return false;
+    }
+
+    if (!req.session.charityAdminIds) {
+      return false;
+    }
+
+    const chid = await (await eventLoader.load(task.eventId)).charityId
+
+    const adids = req.session.charityAdminIds.reduce((a,b) => a || b === chid , false);
+
+    return adids;
+  }
+
   @Mutation(() => TaskResponse)
   @UseMiddleware(isAuth)
   async createTask(

@@ -32,6 +32,7 @@ import { Post } from "../entities/Post";
 import { AdminApproval, Eventvolunteer } from "../entities/Eventvolunteer";
 import { Taskvolunteer } from "../entities/Taskvolunteer";
 import { createEventVolunteerListLoader } from "../utils/dataloaders/createEventVolunteerListLoader";
+import { LikeResponse } from "../utils/cardContainers/LikeResponse";
 
 @ObjectType()
 export class EventResponse {
@@ -164,13 +165,45 @@ export class EventResolver {
     return await userTaskListLoader.load(event.id);
   }
 
-  @Mutation(() => Boolean)
+  @FieldResolver(() => Boolean)
+  async adminStatus(
+    @Root() event: Event,
+    @Ctx() { req }: MyContext
+  ): Promise<boolean> {
+    if (!req.session.userId) {
+      return false;
+    }
+
+    if (!req.session.charityAdminIds) {
+      return false;
+    }
+
+    const adids = req.session.charityAdminIds.reduce(
+      (a, b) => a || b === event.charityId,
+      false
+    );
+
+    return adids;
+  }
+
+  @Mutation(() => LikeResponse)
   @UseMiddleware(isAuth)
   async likeEvent(
     @Arg("eventId", () => Int) eventId: number,
     @Ctx() { req }: MyContext
-  ) {
+  ): Promise<LikeResponse> {
     const { userId } = req.session;
+
+    const event = await Event.findOne({
+      where: { id: eventId, auditstat: true },
+    });
+
+    if (!event) {
+      return {
+        success: false,
+        errors: [{ field: "Event", message: "That event does not exist." }],
+      };
+    }
 
     const like = await Eventlike.findOne({
       where: { eventId: eventId, userId: userId },
@@ -181,15 +214,21 @@ export class EventResolver {
       await getConnection().transaction(async (tm) => {
         await tm.delete(Eventlike, { userId: userId, eventId: eventId });
 
-        await tm.query(
-          `
-                update event 
-                set "likeNumber" = "likeNumber" - 1
-                where id = $1
-                and "likeNumber">0
-            `,
-          [eventId]
-        );
+        // await tm.query(
+        //   `
+        //         update event
+        //         set "likeNumber" = "likeNumber" - 1
+        //         where id = $1
+        //         and "likeNumber">0
+        //     `,
+        //   [eventId]
+        // );
+
+        if (event.likeNumber > 0) {
+          event.likeNumber = event.likeNumber - 1;
+        }
+
+        await event.save();
       });
     } else if (!like) {
       //has never liked before
@@ -201,64 +240,141 @@ export class EventResolver {
           .values({ userId: userId, eventId: eventId })
           .execute();
 
-        await tm.query(
-          `
-                update event 
-                set "likeNumber" = "likeNumber" + 1
-                where id = $1
-            `,
-          [eventId]
-        );
+        // await tm.query(
+        //   `
+        //         update event
+        //         set "likeNumber" = "likeNumber" + 1
+        //         where id = $1
+        //     `,
+        //   [eventId]
+        // );
+
+        event.likeNumber = event.likeNumber + 1;
+        await event.save();
       });
     }
-    return like ? false : true;
+    return like
+      ? {
+          success: true,
+          voteStatus: false,
+          id: eventId,
+          likeNumber: event.likeNumber,
+        }
+      : {
+          success: true,
+          voteStatus: true,
+          id: eventId,
+          likeNumber: event.likeNumber,
+        };
   }
 
+  // @Query(() => PaginatedEvents)
+  // async events(
+  //   @Arg("limit", () => Int) limit: number,
+  //   @Arg("sortByLikes") sortByLikes: boolean,
+  //   @Arg("sortByUpcoming") sortByUpcoming: boolean,
+  //   @Arg("cursor", () => String, { nullable: true }) cursor: string | null
+  // ): Promise<PaginatedEvents> {
+  //   const realLimit = Math.min(50, limit);
+  //   const realLimitPlusOne = realLimit + 1;
+
+  //   const replacements: any[] = [realLimitPlusOne];
+
+  //   if (cursor) {
+  //     replacements.push(new Date(parseInt(cursor))); //cursor null at first
+  //   }
+
+  //   // actual query
+  //   const events = await getConnection().query(
+  //     `
+  //   select e.*
+  //   from event e
+  //   where e.auditstat = TRUE
+  //   ${cursor ? `and e."updatedAt" < $2` : ""}
+  //   order by
+  //       ${sortByUpcoming ? `e."dateStart" DESC,` : ""}
+  //       ${sortByLikes ? `e."likeNumber" DESC,` : ""}
+  //       e."dateStart" DESC
+  //   limit $1
+  //   `,
+  //     replacements
+  //   );
+
+  //   const tot = await getConnection()
+  //     .createQueryBuilder()
+  //     .select("COUNT(ev.*)", "count")
+  //     .from(Event, "ev")
+  //     .getRawOne<number>();
+
+  //   return {
+  //     items: events.slice(0, realLimit),
+  //     hasMore: events.length === realLimitPlusOne,
+  //     total: tot,
+  //   };
+  // }
+
+  // @Query(() => PaginatedEvents)
+  // async eventsByCategories(
+  //   @Arg("limit", () => Int) limit: number,
+  //   @Arg("sortByLikes") sortByLikes: boolean,
+  //   @Arg("sortByUpcoming") sortByUpcoming: boolean,
+  //   @Arg("categories", () => [Number]) categories: number[],
+  //   @Arg("cursor", () => String, { nullable: true }) cursor: string | null
+  // ): Promise<PaginatedEvents> {
+  //   const realLimit = Math.min(50, limit);
+  //   const realLimitPlusOne = realLimit + 1;
+
+  //   const replacements: any[] = [realLimitPlusOne];
+
+  //   const catcsv = categories
+  //     .reduce<string>((a, b) => a + b + `,`, ``)
+  //     .slice(0, -1);
+  //   replacements.push(catcsv);
+
+  //   if (cursor) {
+  //     replacements.push(new Date(parseInt(cursor))); //cursor null at first
+  //   }
+
+  //   // actual query
+  //   const events = await getConnection().query(
+  //     `
+  //     SELECT ev.* FROM (
+  //       SELECT DISTINCT char.*
+  //       FROM charitycategory cc
+  //       INNER JOIN
+  //       (SELECT id FROM unnest(string_to_array( $2, ',')::int[]) AS id
+  //       ) cat
+  //       ON cat.id = cc."categoryId"
+  //       FULL JOIN charity char ON char.id = cc."charityId"
+  //       WHERE cc.auditstat = TRUE
+  //     ) charities
+  //     inner join event ev on charities.id = ev."charityId"
+  //     where ev.auditstat = TRUE
+  //     ${cursor ? `and ev."updatedAt" < $3` : ""}
+  //     order by
+  //       ${sortByUpcoming ? `ev."dateStart" DESC,` : ""}
+  //       ${sortByLikes ? `ev."likeNumber" DESC,` : ""}
+  //       ev."dateStart" DESC
+  //     limit $1;
+  //     `,
+  //     replacements
+  //   );
+
+  //   return {
+  //     items: events.slice(0, realLimit),
+  //     hasMore: events.length === realLimitPlusOne,
+  //     total: events.length
+  //   };
+  // }
+
   @Query(() => PaginatedEvents)
-  async events(
-    @Arg("limit", () => Int) limit: number,
-    @Arg("sortByLikes") sortByLikes: boolean,
-    @Arg("sortByUpcoming") sortByUpcoming: boolean,
-    @Arg("cursor", () => String, { nullable: true }) cursor: string | null
-  ): Promise<PaginatedEvents> {
-    const realLimit = Math.min(50, limit);
-    const realLimitPlusOne = realLimit + 1;
-
-    const replacements: any[] = [realLimitPlusOne];
-
-    if (cursor) {
-      replacements.push(new Date(parseInt(cursor))); //cursor null at first
-    }
-
-    // actual query
-    const events = await getConnection().query(
-      `
-    select e.*
-    from event e 
-    where e.auditstat = TRUE
-    ${cursor ? `and e."updatedAt" < $2` : ""}
-    order by 
-        ${sortByUpcoming ? `e."dateStart" DESC,` : ""}
-        ${sortByLikes ? `e."likeNumber" DESC,` : ""} 
-        e."dateStart" DESC
-    limit $1
-    `,
-      replacements
-    );
-
-    return {
-      events: events.slice(0, realLimit),
-      hasMore: events.length === realLimitPlusOne,
-    };
-  }
-
-  @Query(() => PaginatedEvents)
-  async eventsByCategories(
+  async searchEvents(
     @Arg("limit", () => Int) limit: number,
     @Arg("sortByLikes") sortByLikes: boolean,
     @Arg("sortByUpcoming") sortByUpcoming: boolean,
     @Arg("categories", () => [Number]) categories: number[],
-    @Arg("cursor", () => String, { nullable: true }) cursor: string | null
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
+    @Arg("input", () => String, { nullable: true }) input: string | null
   ): Promise<PaginatedEvents> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
@@ -277,19 +393,24 @@ export class EventResolver {
     // actual query
     const events = await getConnection().query(
       `
-      SELECT ev.* FROM (
-        SELECT DISTINCT char.* 
-        FROM charitycategory cc
-        INNER JOIN 
-        (SELECT id FROM unnest(string_to_array( $2, ',')::int[]) AS id
+      select * from (
+        select distinct ev.* from event ev
+        inner join charitycategory cc 
+        on ev."charityId" = cc."charityId"
+        inner join (
+          select c.id from (
+            SELECT id FROM unnest(
+              string_to_array( $2, ',')::int[]
+            ) AS id
+          ) ca inner join category c on ca.id = c.id
+          union all 
+          select c.id from category c where ($2='')
         ) cat
-        ON cat.id = cc."categoryId"
-        FULL JOIN charity char ON char.id = cc."charityId"
-        WHERE cc.auditstat = TRUE
-      ) charities
-      inner join event ev on charities.id = ev."charityId"
-      where ev.auditstat = TRUE
+        on cat.id = cc."categoryId"
+      ) ev
+      where ev.auditstat = true
       ${cursor ? `and ev."updatedAt" < $3` : ""}
+      ${input ? `and ev.name ILIKE ` + `'` + input + `%` + `'` : ""}
       order by 
         ${sortByUpcoming ? `ev."dateStart" DESC,` : ""}
         ${sortByLikes ? `ev."likeNumber" DESC,` : ""} 
@@ -299,9 +420,35 @@ export class EventResolver {
       replacements
     );
 
+    const tot = await getConnection().query(
+      `
+      select COUNT(*) as "count" from ( 
+        select * from (
+          select distinct ev.* from event ev
+          inner join charitycategory cc 
+          on ev."charityId" = cc."charityId"
+          inner join (
+            select c.id from (
+              SELECT id FROM unnest(
+                string_to_array( $1, ',')::int[]
+              ) AS id
+            ) ca inner join category c on ca.id = c.id
+            union all 
+            select c.id from category c where ($1='')
+          ) cat
+          on cat.id = cc."categoryId"
+        ) ev
+        where ev.auditstat = true
+        ${input ? `and ev.name ILIKE ` + `'` + input + `%` + `'` : ""}
+      ) c
+      `,
+      [catcsv]
+    );
+
     return {
-      events: events.slice(0, realLimit),
+      items: events.slice(0, realLimit),
       hasMore: events.length === realLimitPlusOne,
+      total: parseInt(tot[0].count),
     };
   }
 
@@ -533,15 +680,16 @@ export class EventResolver {
         await tm
           .createQueryBuilder()
           .delete()
-          .from(Eventlike, `el`)
-          .where(`el."eventId" :event`, { event: id })
+          .from(Eventlike)
+          .where(`"eventId" :event`, { event: id })
           .execute();
       });
 
       // get list of posteventlinks which are about event
 
-      const pels = await Posteventlink.find({ where: { eventId: id } });
+      const pels = await Posteventlink.find({ where: { eventId: id, auditstat:true } });
       const postkeys = pels.map((pe) => pe.postId);
+  
 
       // mark posts which are about event
       await deletePosts(postkeys);
@@ -649,6 +797,7 @@ export class EventResolver {
       isEvent: true,
       eventId: pel.eventId,
       eventName: pel.eventName,
+      creatorStatus: true,
     };
 
     return { success: true, epost: epost };
@@ -766,7 +915,7 @@ export class EventResolver {
         tm.createQueryBuilder()
           .update(Taskvolunteer)
           .set({ auditstat: false })
-          .where(`"taskId" in {:...tid}`, { tid: taskids })
+          .where(`"taskId" in (:...tid)`, { tid: taskids })
           .andWhere(`auditstat = true`)
           .execute();
       });
