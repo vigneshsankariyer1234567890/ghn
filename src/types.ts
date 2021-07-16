@@ -7,12 +7,12 @@ import {
   createCharityCategoryLoader,
 } from "./utils/dataloaders/createInterestsLoader";
 import { createLikesLoader } from "./utils/dataloaders/createLikesLoader";
-import { createUserLoader } from "./utils/dataloaders/createUserLoader";
+import { createUserLoader, createUserProfileLoader } from "./utils/dataloaders/createUserLoader";
 import {
   createEventLikesArrayLoader,
   createEventLikesLoader,
 } from "./utils/dataloaders/createEventLikesLoader";
-import { createCharityLoader } from "./utils/dataloaders/createCharityLoader";
+import { createCharityLoader, createCharityProfileLoader } from "./utils/dataloaders/createCharityLoader";
 import {
   createEventLoader,
   createCEventsLoader,
@@ -58,5 +58,7 @@ export type MyContext = {
   charityAdminRoleLoader: ReturnType<typeof createCharityAdminRolesLoader>;
   userFriendsLoader: ReturnType<typeof createUserFriendsLoader>;
   userFriendshipLoader: ReturnType<typeof createUserFriendshipLoader>;
-  userVolunteeredEventsListLoader: ReturnType<typeof createUserVolunteeredEventsListLoader>
+  userVolunteeredEventsListLoader: ReturnType<typeof createUserVolunteeredEventsListLoader>;
+  userProfileLoader: ReturnType<typeof createUserProfileLoader>;
+  charityProfileLoader: ReturnType<typeof createCharityProfileLoader>
 };

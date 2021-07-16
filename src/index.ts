@@ -16,7 +16,7 @@ import { createConnection } from "typeorm";
 import { User } from "./entities/User";
 import { Post } from "./entities/Post";
 import { Like } from "./entities/Like";
-import { createUserLoader } from "./utils/dataloaders/createUserLoader";
+import { createUserLoader, createUserProfileLoader } from "./utils/dataloaders/createUserLoader";
 import { createLikesLoader } from "./utils/dataloaders/createLikesLoader";
 import path from "path";
 import { Usercategory } from "./entities/Usercategory";
@@ -43,7 +43,7 @@ import {
   createEventLikesLoader,
 } from "./utils/dataloaders/createEventLikesLoader";
 import { EventResolver } from "./resolvers/event";
-import { createCharityLoader } from "./utils/dataloaders/createCharityLoader";
+import { createCharityLoader, createCharityProfileLoader } from "./utils/dataloaders/createCharityLoader";
 import { Charityfollow } from "./entities/Charityfollow";
 import {
   createCEventsLoader,
@@ -183,7 +183,9 @@ const main = async () => {
       charityAdminRoleLoader: createCharityAdminRolesLoader(),
       userFriendsLoader: createUserFriendsLoader(),
       userFriendshipLoader: createUserFriendshipLoader(),
-      userVolunteeredEventsListLoader: createUserVolunteeredEventsListLoader()
+      userVolunteeredEventsListLoader: createUserVolunteeredEventsListLoader(),
+      userProfileLoader: createUserProfileLoader(),
+      charityProfileLoader: createCharityProfileLoader()
     }),
     playground: true,
     introspection: true,

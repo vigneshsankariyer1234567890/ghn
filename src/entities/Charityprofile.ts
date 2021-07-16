@@ -1,5 +1,5 @@
 import { Field, ObjectType } from "type-graphql";
-import { Column, CreateDateColumn, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { BaseEntity } from "typeorm/repository/BaseEntity";
 import { Charity } from "./Charity";
 
@@ -15,13 +15,13 @@ export class Charityprofile extends BaseEntity {
   @Column("text")
   about: string;
 
-  @Field()
-  @Column()
-  displayPicture: string;
+  @Field(() => String, {nullable: true})
+  @Column({type: 'text',nullable: true})
+  displayPicture: string | null;
 
-  @Field()
-  @Column()
-  links: string;
+  @Field(() => String, {nullable: true})
+  @Column({type: 'text',nullable: true})
+  links: string | null;;
 
   @Field(() => String)
   @CreateDateColumn()
@@ -31,7 +31,9 @@ export class Charityprofile extends BaseEntity {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @OneToOne(() => Charity)
-  @JoinColumn()
+  @Column({unique: true})
+  charityId!: number;
+
+  @ManyToOne(() => Charity, charity => charity.profile)
   charity: Charity;
 }

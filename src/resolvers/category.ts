@@ -99,6 +99,58 @@ export class CategoryResolver {
     return { success: true };
   }
 
+  static async updateUserCategories(
+    categories: CategoryInput,
+    userId: number
+  ): Promise<CategoryResponse> {
+    const catarr = categories.categories;
+
+    if (catarr.length < 1) {
+      return {
+        errors: [
+          {
+            field: "Interests",
+            message: "Please select at least one interest.",
+          },
+        ],
+        success: false,
+      };
+    }
+
+    const uc = await Usercategory.find({
+      where: { userId: userId, auditstat: true },
+    });
+
+    if (uc.length > 0) {
+      // updates to false
+      await getConnection().transaction(async (tm) => {
+        await tm.query(
+          `
+                update usercategory
+                set auditstat = false
+                where "userId" = $1
+            `,
+          [userId]
+        );
+      });
+    }
+
+    // insert back
+    catarr.forEach(async (category) => {
+      await getConnection().transaction(async (tm) => {
+        await tm.query(
+          `
+                    insert into usercategory ("userId", "categoryId")
+                    values ($1, $2)
+                `,
+          [userId, category]
+        );
+      });
+    });
+
+    return { success: true };
+  }
+
   @UseMiddleware(isAuth)
   @Mutation(() => CategoryResponse)
   async updateCharityCategories(
@@ -184,5 +236,59 @@ export class CategoryResolver {
     });
 
     return { success: true };
+  }
+
+  static async updateCharityCategories(
+    categories: CategoryInput,
+    charityId: number
+  ): Promise<CategoryResponse> {
+    const catarr = categories.categories;
+
+    if (catarr.length < 1) {
+      return {
+        errors: [
+          {
+            field: "Interests",
+            message: "Please select at least one interest.",
+          },
+        ],
+        success: false,
+      };
+    }
+
+    const uc = await Charitycategory.find({
+      where: { charityId: charityId, auditstat: true },
+    });
+
+    if (uc.length > 0) {
+      // updates to false
+      await getConnection().transaction(async (tm) => {
+        await tm.query(
+          `
+                update charitycategory
+                set auditstat = false
+                where "charityId" = $1
+            `,
+          [charityId]
+        );
+      });
+    }
+
+    // insert back
+    catarr.forEach(async (category) => {
+      await getConnection().transaction(async (tm) => {
+        await tm.query(
+          `
+                    insert into charitycategory ("charityId", "categoryId")
+                    values ($1, $2)
+                `,
+          [charityId, category]
+        );
+      });
+    });
+
+    return { success: true };
+
+
   }
 }

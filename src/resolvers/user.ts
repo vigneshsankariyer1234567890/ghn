@@ -15,7 +15,10 @@ import { MyContext } from "../types";
 import { User } from "../entities/User";
 import argon2 from "argon2";
 import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from "../constants";
-import { UsernamePasswordInput } from "../utils/UsernamePasswordInput";
+import {
+  UsernamePasswordInput,
+  UserProfileUpdateInput,
+} from "../utils/UsernamePasswordInput";
 import { validateRegister } from "../utils/validateRegister";
 import { sendEmail } from "../utils/sendEmail";
 import { v4 } from "uuid";
@@ -37,6 +40,8 @@ import { Task } from "../entities/Task";
 import { Taskvolunteer } from "../entities/Taskvolunteer";
 import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
 import { PaginatedUsers } from "../utils/cardContainers/PaginatedCharitiesAndUsers";
+import { Userprofile } from "../entities/Userprofile";
+import { CategoryResolver } from "./category";
 
 @ObjectType()
 export class FieldError {
@@ -71,6 +76,14 @@ export class UserResolver {
     }
     // current user wants to see someone elses email
     return "";
+  }
+
+  @FieldResolver(() => Userprofile, { nullable: true })
+  async profile(
+    @Root() user: User,
+    @Ctx() { userProfileLoader }: MyContext
+  ): Promise<Userprofile | null> {
+    return await userProfileLoader.load(user.id);
   }
 
   @FieldResolver(() => [Category])
@@ -285,11 +298,14 @@ export class UserResolver {
     if (req.session.userId) {
       return {
         success: false,
-        errors: [{
-          field: "User",
-          message: "You are already logged in. Please log out if you wish to log in as another user."
-        }]
-      }
+        errors: [
+          {
+            field: "User",
+            message:
+              "You are already logged in. Please log out if you wish to log in as another user.",
+          },
+        ],
+      };
     }
     const user = await User.findOne(
       usernameOrEmail.includes("@")
@@ -352,6 +368,84 @@ export class UserResolver {
         resolve(true);
       })
     );
+  }
+
+  @UseMiddleware(isAuth)
+  @Mutation(() => UserResponse)
+  async updateUserProfile(
+    @Arg("options") options: UserProfileUpdateInput,
+    @Ctx() { req }: MyContext
+  ): Promise<UserResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    const user = await User.findOne(req.session.userId);
+
+    if (!user) {
+      return {
+        success: false,
+        errors: [
+          { field: "Fatal", message: "Please contact the Givehub Developers." },
+        ],
+      };
+    }
+
+    if (options.categories) {
+      const resp = await CategoryResolver.updateUserCategories({categories: options.categories}, user.id);
+      if (!resp.success) {
+        return {
+          success: false,
+          errors: resp.errors
+        }
+      }
+    }
+
+    if (options.email !== user.email) {
+      user.email = options.email;
+    }
+
+    const userprof = await getConnection()
+      .createQueryBuilder()
+      .select()
+      .from(Userprofile, `up`)
+      .where(`up."userId" = :uid`, { uid: user.id })
+      .getRawOne<Userprofile>();
+
+    if (!userprof) {
+      await Userprofile.create({
+        user: user,
+        about: options.about,
+        gender: options.gender,
+        firstName: options.firstName,
+        lastName: options.lastName,
+        telegramHandle: options.telegramHandle ? options.telegramHandle : null,
+      }).save();
+    } else {
+      await getConnection().transaction(async (tm) => {
+        await tm
+          .createQueryBuilder()
+          .update(Userprofile)
+          .set({
+            about: options.about,
+            gender: options.gender,
+            firstName: options.firstName,
+            lastName: options.lastName,
+            telegramHandle: options.telegramHandle
+              ? options.telegramHandle
+              : null,
+          })
+          .where(`"userId" = :uid`, { uid: user.id })
+          .execute();
+      });
+    }
+
+    await user.save();
+
+    return { success: true, user: user };
   }
 
   @Mutation(() => UserResponse)
@@ -830,13 +924,19 @@ export class UserResolver {
     // const catcsv = categories
     //   .reduce<string>((a, b) => a + b + `,`, ``)
     //   .slice(0, -1);
-    
+
     // actual query
     const users = await getConnection().query(
       `
       SELECT * FROM "user" us
       ${input ? `where us."username" ILIKE '` + input + `%'` : ""}
-      ${cursor ? input ? `and us."username" > '`+ cursor + `'`: `where us."username" > '`+ cursor + `'` : ""}
+      ${
+        cursor
+          ? input
+            ? `and us."username" > '` + cursor + `'`
+            : `where us."username" > '` + cursor + `'`
+          : ""
+      }
       order by us."username" ASC
       limit ${realLimitPlusOne}
       `
@@ -854,7 +954,7 @@ export class UserResolver {
     return {
       items: users.slice(0, realLimit),
       hasMore: users.length === realLimitPlusOne,
-      total: parseInt(tot[0].count)
+      total: parseInt(tot[0].count),
     };
   }
 }

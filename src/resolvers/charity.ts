@@ -3,7 +3,6 @@ import {
   Ctx,
   Field,
   FieldResolver,
-  InputType,
   Int,
   Mutation,
   ObjectType,
@@ -28,6 +27,12 @@ import { Event } from "../entities/Event";
 import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
 // import { Charitycategory } from "../entities/Charitycategory";
 import { PaginatedCharities } from "../utils/cardContainers/PaginatedCharitiesAndUsers";
+import {
+  CharityDataInput,
+  CharityProfileUpdateInput,
+} from "../utils/CharityDataInput";
+import { Charityprofile } from "../entities/Charityprofile";
+import { CategoryResolver } from "./category";
 
 @ObjectType()
 class UENResponse {
@@ -53,31 +58,19 @@ class CharityResponse {
   success: boolean;
 }
 
-// @ObjectType()
-// class PaginatedCharities {
-//   @Field(() => [Charity])
-//   charities: Charity[];
-//   @Field()
-//   hasMore: boolean;
-// }
-
-@InputType()
-export class CharityDataInput {
-  @Field()
-  uen!: string;
-  @Field()
-  name!: string;
-  @Field()
-  physicalAddress!: string;
-  @Field()
-  postalcode!: string;
-}
-
 @Resolver(Charity)
 export class CharityResolver {
   @FieldResolver(() => User)
   charitycreator(@Root() charity: Charity, @Ctx() { userLoader }: MyContext) {
     return userLoader.load(charity.charitycreatorId);
+  }
+
+  @FieldResolver(() => Charityprofile, { nullable: true })
+  async profile(
+    @Root() charity: Charity,
+    @Ctx() { charityProfileLoader }: MyContext
+  ): Promise<Charityprofile | null> {
+    return await charityProfileLoader.load(charity.id);
   }
 
   @FieldResolver(() => [Category])
@@ -149,7 +142,10 @@ export class CharityResolver {
       return false;
     }
 
-    const adids = req.session.charityAdminIds.reduce((a,b) => a || b === charity.id , false);
+    const adids = req.session.charityAdminIds.reduce(
+      (a, b) => a || b === charity.id,
+      false
+    );
 
     return adids;
   }
@@ -384,6 +380,106 @@ export class CharityResolver {
     return { charity, success: true };
   }
 
+  @UseMiddleware(isAuth)
+  @Mutation(() => CharityResponse)
+  async updateCharityProfile(
+    @Arg("charityId") charityId: number,
+    @Arg("options") options: CharityProfileUpdateInput,
+    @Ctx() { req }: MyContext
+  ): Promise<CharityResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    if (!req.session.charityAdminIds) {
+      return {
+        success: false,
+        errors: [
+          { field: "User", message: "User is not an admin of the charity" },
+        ],
+      };
+    }
+
+    const adid = req.session.charityAdminIds.reduce(
+      (a, b) => a || b === charityId,
+      false
+    );
+
+    if (!adid) {
+      return {
+        success: false,
+        errors: [
+          { field: "User", message: "User is not an admin of the charity" },
+        ],
+      };
+    }
+
+    const charity = await Charity.findOne(charityId);
+
+    if (!charity) {
+      return {
+        success: false,
+        errors: [
+          { field: "Fatal", message: "Please contact the Givehub Developers." },
+        ],
+      };
+    }
+
+    if (options.categories) {
+      const resp = await CategoryResolver.updateCharityCategories({categories: options.categories}, charity.id);
+      if (!resp.success) {
+        return {
+          success: false,
+          errors: resp.errors
+        }
+      }
+    }
+
+    charity.name = charity.name !== options.name ? options.name : charity.name;
+    charity.physicalAddress =
+      charity.physicalAddress !== options.physicalAddress
+        ? options.physicalAddress
+        : charity.physicalAddress;
+    charity.postalcode =
+      charity.postalcode !== options.postalcode
+        ? options.postalcode
+        : charity.postalcode;
+
+    const charityprofs = await getConnection()
+      .createQueryBuilder()
+      .select()
+      .from(Charityprofile, `cp`)
+      .where(`cp."charityId" = :cid`, { cid: charity.id })
+      .getRawOne<Charityprofile>();
+
+    if (!charityprofs) {
+      await Charityprofile.create({
+        charity: charity,
+        about: options.about,
+        links: options.links ? options.links : null,
+      }).save();
+    } else {
+      await getConnection().transaction(async (tm) => {
+        await tm
+          .createQueryBuilder()
+          .update(Charityprofile)
+          .set({
+            about: options.about,
+            links: options.links ? options.links : null,
+          })
+          .where(`"charityId" = :cid`, { cid: charity.id })
+          .execute();
+      });
+    }
+
+    await charity.save();
+
+    return { success: true, charity: charity };
+  }
+
   @Query(() => PaginatedCharities)
   async searchCharitiesByCategories(
     @Arg("limit", () => Int) limit: number,
@@ -540,8 +636,7 @@ export class CharityResolver {
       };
     }
 
-    req.session.charityAdminIds.forEach( i => console.log(i));
-
+    req.session.charityAdminIds.forEach((i) => console.log(i));
 
     const adids = req.session.charityAdminIds.filter((i) => i === charityId);
 
@@ -603,8 +698,8 @@ export class CharityResolver {
         userId: userId,
         charityId: charityId,
         userrole: 1,
-        auditstat: true
-      }
+        auditstat: true,
+      },
     });
 
     if (checkUserIsAdmin) {
@@ -616,9 +711,8 @@ export class CharityResolver {
           },
         ],
         success: false,
-      }; 
+      };
     }
-    
 
     await getConnection().transaction(async (tm) => {
       await tm
@@ -649,7 +743,7 @@ export class CharityResolver {
     const catcsv = categories
       .reduce<string>((a, b) => a + b + `,`, ``)
       .slice(0, -1);
-    
+
     // actual query
     const chars = await getConnection().query(
       `
@@ -668,8 +762,14 @@ export class CharityResolver {
         where cc.auditstat = true
       ) charities
 
-      ${input ? `where charities.name ILIKE '`+input + `%'` : ""}
-      ${cursor ? input ? `and charities.name > '`+ cursor + `'`: `where charities.name > '`+ cursor + `'` : ""}
+      ${input ? `where charities.name ILIKE '` + input + `%'` : ""}
+      ${
+        cursor
+          ? input
+            ? `and charities.name > '` + cursor + `'`
+            : `where charities.name > '` + cursor + `'`
+          : ""
+      }
       order by charities.name ASC
       limit ${realLimitPlusOne}
       `
@@ -693,15 +793,15 @@ export class CharityResolver {
           where cc.auditstat = true
         ) charities
 
-        ${input ? `where charities.name ILIKE '`+input + `%'` : ""}
+        ${input ? `where charities.name ILIKE '` + input + `%'` : ""}
       ) c
       `
-    )
+    );
 
     return {
       items: chars.slice(0, realLimit),
       hasMore: chars.length === realLimitPlusOne,
-      total: parseInt(tot[0].count)
+      total: parseInt(tot[0].count),
     };
   }
 }

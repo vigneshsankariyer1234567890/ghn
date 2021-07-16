@@ -1,5 +1,5 @@
 import { Field, ObjectType, registerEnumType } from "type-graphql";
-import { Column, CreateDateColumn, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { BaseEntity } from "typeorm/repository/BaseEntity";
 import { User } from "./User";
 
@@ -41,13 +41,13 @@ export class Userprofile extends BaseEntity {
   @Column()
   lastName: string;
 
-  @Field()
-  @Column()
-  displayPicture: string;
+  @Field(() => String, {nullable: true})
+  @Column({type: 'text',nullable: true})
+  displayPicture: string | null;
 
-  @Field()
-  @Column()
-  telegramHandle: string;
+  @Field(() => String, {nullable: true})
+  @Column({type: 'text',nullable: true})
+  telegramHandle: string | null;
 
   @Field(() => String)
   @CreateDateColumn()
@@ -57,8 +57,9 @@ export class Userprofile extends BaseEntity {
   @UpdateDateColumn()
   updatedAt: Date;
 
+  @Column({unique: true})
+  userId!: number;
 
-  @OneToOne(() => User)
-  @JoinColumn()
+  @ManyToOne(() => User, user => user.profile)
   user: User;
 }
