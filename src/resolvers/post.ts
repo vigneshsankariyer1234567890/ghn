@@ -21,6 +21,7 @@ import {
   EPost,
 } from "../utils/cardContainers/PostInput";
 import { Posteventlink } from "../entities/Posteventlink";
+import { LikeResponse } from "../utils/cardContainers/LikeResponse";
 
 @Resolver(Post)
 export class PostResolver {
@@ -64,13 +65,22 @@ export class PostResolver {
     return true;
   }
 
-  @Mutation(() => Boolean)
+  @Mutation(() => LikeResponse)
   @UseMiddleware(isAuth)
   async likePost(
     @Arg("postId", () => Int) postId: number,
     @Ctx() { req }: MyContext
-  ) {
+  ): Promise<LikeResponse> {
     const { userId } = req.session;
+
+    const post = await Post.findOne({ where: { id: postId, auditstat: true } });
+
+    if (!post) {
+      return {
+        success: false,
+        errors: [{ field: "Post", message: "That post does not exist." }],
+      };
+    }
 
     const like = await Like.findOne({ where: { postId, userId } });
 
@@ -81,15 +91,21 @@ export class PostResolver {
 
         await tm.delete(Like, { userId: userId, postId: postId });
 
-        await tm.query(
-          `
-                update post 
-                set "likeNumber" = "likeNumber" - 1
-                where id = $1
-                and "likeNumber">0
-            `,
-          [postId]
-        );
+        // await tm.query(
+        //   `
+        //         update post
+        //         set "likeNumber" = "likeNumber" - 1
+        //         where id = $1
+        //         and "likeNumber">0
+        //     `,
+        //   [postId]
+        // );
+
+        if (post.likeNumber > 0) {
+          post.likeNumber = post.likeNumber - 1;
+        }
+
+        await post.save();
       });
     } else if (!like) {
       //has never liked before
@@ -101,17 +117,32 @@ export class PostResolver {
           .values({ userId: userId, postId: postId })
           .execute();
 
-        await tm.query(
-          `
-                update post 
-                set "likeNumber" = "likeNumber" + 1
-                where id = $1
-            `,
-          [postId]
-        );
+        // await tm.query(
+        //   `
+        //         update post
+        //         set "likeNumber" = "likeNumber" + 1
+        //         where id = $1
+        //     `,
+        //   [postId]
+        // );
+        post.likeNumber = post.likeNumber + 1;
+        await post.save();
       });
     }
-    return like ? false : true;
+
+    return like
+      ? {
+          success: true,
+          voteStatus: false,
+          id: postId,
+          likeNumber: post.likeNumber,
+        }
+      : {
+          success: true,
+          voteStatus: true,
+          id: postId,
+          likeNumber: post.likeNumber,
+        };
   }
 
   @Query(() => PaginatedPosts)
@@ -189,8 +220,8 @@ export class PostResolver {
       eventId: eventinfo.eventId,
       eventName: eventinfo.eventName,
       creatorStatus: !req.session.userId
-          ? false
-          : p.creatorId === req.session.userId
+        ? false
+        : p.creatorId === req.session.userId,
     };
   }
 
@@ -226,7 +257,11 @@ export class PostResolver {
       .returning("*")
       .execute();
 
-    return {post:result.raw[0], isEvent: result.raw[0].isEvent, creatorStatus: true};
+    return {
+      post: result.raw[0],
+      isEvent: result.raw[0].isEvent,
+      creatorStatus: true,
+    };
   }
 
   @Mutation(() => Boolean)
@@ -250,8 +285,8 @@ export class PostResolver {
       await tm
         .createQueryBuilder()
         .delete()
-        .from(Like, `l`)
-        .where(`l."postId" = :post`, { post: id })
+        .from(Like)
+        .where(`"postId" = :post`, { post: id })
         .execute();
     });
 
@@ -287,8 +322,8 @@ export async function deletePosts(postIds: number[]): Promise<void> {
     await tm
       .createQueryBuilder()
       .delete()
-      .from(Like, `l`)
-      .where(`l."postId" in (:posts)`, { posts: postIds })
+      .from(Like)
+      .where(`l."postId" in (:...posts)`, { posts: postIds })
       .execute();
   });
 

@@ -16,3 +16,4 @@ export abstract class iLike extends BaseEntity {
     // auditstat!: boolean;
 
 }
+

@@ -32,6 +32,7 @@ import { Post } from "../entities/Post";
 import { AdminApproval, Eventvolunteer } from "../entities/Eventvolunteer";
 import { Taskvolunteer } from "../entities/Taskvolunteer";
 import { createEventVolunteerListLoader } from "../utils/dataloaders/createEventVolunteerListLoader";
+import { LikeResponse } from "../utils/cardContainers/LikeResponse";
 
 @ObjectType()
 export class EventResponse {
@@ -177,18 +178,32 @@ export class EventResolver {
       return false;
     }
 
-    const adids = req.session.charityAdminIds.reduce((a,b) => a || b === event.charityId , false);
+    const adids = req.session.charityAdminIds.reduce(
+      (a, b) => a || b === event.charityId,
+      false
+    );
 
     return adids;
   }
 
-  @Mutation(() => Boolean)
+  @Mutation(() => LikeResponse)
   @UseMiddleware(isAuth)
   async likeEvent(
     @Arg("eventId", () => Int) eventId: number,
     @Ctx() { req }: MyContext
-  ) {
+  ): Promise<LikeResponse> {
     const { userId } = req.session;
+
+    const event = await Event.findOne({
+      where: { id: eventId, auditstat: true },
+    });
+
+    if (!event) {
+      return {
+        success: false,
+        errors: [{ field: "Event", message: "That event does not exist." }],
+      };
+    }
 
     const like = await Eventlike.findOne({
       where: { eventId: eventId, userId: userId },
@@ -199,15 +214,21 @@ export class EventResolver {
       await getConnection().transaction(async (tm) => {
         await tm.delete(Eventlike, { userId: userId, eventId: eventId });
 
-        await tm.query(
-          `
-                update event 
-                set "likeNumber" = "likeNumber" - 1
-                where id = $1
-                and "likeNumber">0
-            `,
-          [eventId]
-        );
+        // await tm.query(
+        //   `
+        //         update event
+        //         set "likeNumber" = "likeNumber" - 1
+        //         where id = $1
+        //         and "likeNumber">0
+        //     `,
+        //   [eventId]
+        // );
+
+        if (event.likeNumber > 0) {
+          event.likeNumber = event.likeNumber - 1;
+        }
+
+        await event.save();
       });
     } else if (!like) {
       //has never liked before
@@ -219,17 +240,32 @@ export class EventResolver {
           .values({ userId: userId, eventId: eventId })
           .execute();
 
-        await tm.query(
-          `
-                update event 
-                set "likeNumber" = "likeNumber" + 1
-                where id = $1
-            `,
-          [eventId]
-        );
+        // await tm.query(
+        //   `
+        //         update event
+        //         set "likeNumber" = "likeNumber" + 1
+        //         where id = $1
+        //     `,
+        //   [eventId]
+        // );
+
+        event.likeNumber = event.likeNumber + 1;
+        await event.save();
       });
     }
-    return like ? false : true;
+    return like
+      ? {
+          success: true,
+          voteStatus: false,
+          id: eventId,
+          likeNumber: event.likeNumber,
+        }
+      : {
+          success: true,
+          voteStatus: true,
+          id: eventId,
+          likeNumber: event.likeNumber,
+        };
   }
 
   // @Query(() => PaginatedEvents)
@@ -252,12 +288,12 @@ export class EventResolver {
   //   const events = await getConnection().query(
   //     `
   //   select e.*
-  //   from event e 
+  //   from event e
   //   where e.auditstat = TRUE
   //   ${cursor ? `and e."updatedAt" < $2` : ""}
-  //   order by 
+  //   order by
   //       ${sortByUpcoming ? `e."dateStart" DESC,` : ""}
-  //       ${sortByLikes ? `e."likeNumber" DESC,` : ""} 
+  //       ${sortByLikes ? `e."likeNumber" DESC,` : ""}
   //       e."dateStart" DESC
   //   limit $1
   //   `,
@@ -303,9 +339,9 @@ export class EventResolver {
   //   const events = await getConnection().query(
   //     `
   //     SELECT ev.* FROM (
-  //       SELECT DISTINCT char.* 
+  //       SELECT DISTINCT char.*
   //       FROM charitycategory cc
-  //       INNER JOIN 
+  //       INNER JOIN
   //       (SELECT id FROM unnest(string_to_array( $2, ',')::int[]) AS id
   //       ) cat
   //       ON cat.id = cc."categoryId"
@@ -315,16 +351,14 @@ export class EventResolver {
   //     inner join event ev on charities.id = ev."charityId"
   //     where ev.auditstat = TRUE
   //     ${cursor ? `and ev."updatedAt" < $3` : ""}
-  //     order by 
+  //     order by
   //       ${sortByUpcoming ? `ev."dateStart" DESC,` : ""}
-  //       ${sortByLikes ? `ev."likeNumber" DESC,` : ""} 
+  //       ${sortByLikes ? `ev."likeNumber" DESC,` : ""}
   //       ev."dateStart" DESC
   //     limit $1;
   //     `,
   //     replacements
   //   );
-
-    
 
   //   return {
   //     items: events.slice(0, realLimit),
@@ -376,7 +410,7 @@ export class EventResolver {
       ) ev
       where ev.auditstat = true
       ${cursor ? `and ev."updatedAt" < $3` : ""}
-      ${input ? `and ev.name ILIKE ` + `'`+ input + `%` + `'` : ""}
+      ${input ? `and ev.name ILIKE ` + `'` + input + `%` + `'` : ""}
       order by 
         ${sortByUpcoming ? `ev."dateStart" DESC,` : ""}
         ${sortByLikes ? `ev."likeNumber" DESC,` : ""} 
@@ -405,15 +439,16 @@ export class EventResolver {
           on cat.id = cc."categoryId"
         ) ev
         where ev.auditstat = true
-        ${input ? `and ev.name ILIKE ` + `'`+ input + `%` + `'` : ""}
+        ${input ? `and ev.name ILIKE ` + `'` + input + `%` + `'` : ""}
       ) c
-      `, [catcsv]
-    )
+      `,
+      [catcsv]
+    );
 
     return {
       items: events.slice(0, realLimit),
       hasMore: events.length === realLimitPlusOne,
-      total: parseInt(tot[0].count)
+      total: parseInt(tot[0].count),
     };
   }
 
@@ -645,15 +680,16 @@ export class EventResolver {
         await tm
           .createQueryBuilder()
           .delete()
-          .from(Eventlike, `el`)
-          .where(`el."eventId" :event`, { event: id })
+          .from(Eventlike)
+          .where(`"eventId" :event`, { event: id })
           .execute();
       });
 
       // get list of posteventlinks which are about event
 
-      const pels = await Posteventlink.find({ where: { eventId: id } });
+      const pels = await Posteventlink.find({ where: { eventId: id, auditstat:true } });
       const postkeys = pels.map((pe) => pe.postId);
+  
 
       // mark posts which are about event
       await deletePosts(postkeys);
@@ -761,7 +797,7 @@ export class EventResolver {
       isEvent: true,
       eventId: pel.eventId,
       eventName: pel.eventName,
-      creatorStatus: true
+      creatorStatus: true,
     };
 
     return { success: true, epost: epost };
@@ -879,7 +915,7 @@ export class EventResolver {
         tm.createQueryBuilder()
           .update(Taskvolunteer)
           .set({ auditstat: false })
-          .where(`"taskId" in {:...tid}`, { tid: taskids })
+          .where(`"taskId" in (:...tid)`, { tid: taskids })
           .andWhere(`auditstat = true`)
           .execute();
       });
