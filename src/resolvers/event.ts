@@ -256,15 +256,15 @@ export class EventResolver {
     return like
       ? {
           success: true,
-          voteStatus: false,
+          // voteStatus: false,
           likeItem: event,
-          likeNumber: event.likeNumber,
+          // likeNumber: event.likeNumber,
         }
       : {
           success: true,
-          voteStatus: true,
+          // voteStatus: true,
           likeItem: event,
-          likeNumber: event.likeNumber,
+          // likeNumber: event.likeNumber,
         };
   }
 

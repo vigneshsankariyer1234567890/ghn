@@ -1,4 +1,4 @@
-import { ClassType, Field, Int, ObjectType } from "type-graphql";
+import { ClassType, Field, ObjectType } from "type-graphql";
 import { Event } from "../../entities/Event";
 // import { Post } from "../../entities/Post";
 import { FieldError } from "../../resolvers/user";
@@ -23,11 +23,11 @@ function LikeResponser<TItem>(TItemClass: ClassType<TItem>) {
     @Field(() => TItemClass, { nullable: true })
     likeItem?: TItem;
 
-    @Field(() => Boolean, { nullable: true })
-    voteStatus?: boolean;
+    // @Field(() => Boolean, { nullable: true })
+    // voteStatus?: boolean;
 
-    @Field(() => Int, { nullable: true })
-    likeNumber?: number;
+    // @Field(() => Int, { nullable: true })
+    // likeNumber?: number;
 
     @Field(() => [FieldError], { nullable: true })
     errors?: FieldError[];

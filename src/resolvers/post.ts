@@ -136,7 +136,7 @@ export class PostResolver {
     return like
       ? {
           success: true,
-          voteStatus: false,
+          // voteStatus: false,
           likeItem: {
             post: post,
             isEvent: post.isEvent,
@@ -144,11 +144,11 @@ export class PostResolver {
             eventId: pel ? pel.eventId : undefined,
             eventName: pel ? pel.eventName: undefined
           },
-          likeNumber: post.likeNumber,
+          // likeNumber: post.likeNumber,
         }
       : {
           success: true,
-          voteStatus: true,
+          // voteStatus: true,
           likeItem: {
             post: post,
             isEvent: post.isEvent,
@@ -156,7 +156,7 @@ export class PostResolver {
             eventId: pel ? pel.eventId : undefined,
             eventName: pel ? pel.eventName: undefined
           },
-          likeNumber: post.likeNumber,
+          // likeNumber: post.likeNumber,
         };
   }
 
