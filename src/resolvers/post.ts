@@ -21,7 +21,7 @@ import {
   EPost,
 } from "../utils/cardContainers/PostInput";
 import { Posteventlink } from "../entities/Posteventlink";
-import { LikeResponse } from "../utils/cardContainers/LikeResponse";
+import { PostLikeResponse } from "../utils/cardContainers/LikeResponse";
 
 @Resolver(Post)
 export class PostResolver {
@@ -65,12 +65,12 @@ export class PostResolver {
     return true;
   }
 
-  @Mutation(() => LikeResponse)
+  @Mutation(() => PostLikeResponse)
   @UseMiddleware(isAuth)
   async likePost(
     @Arg("postId", () => Int) postId: number,
     @Ctx() { req }: MyContext
-  ): Promise<LikeResponse> {
+  ): Promise<PostLikeResponse> {
     const { userId } = req.session;
 
     const post = await Post.findOne({ where: { id: postId, auditstat: true } });
@@ -130,17 +130,32 @@ export class PostResolver {
       });
     }
 
+    const pel = await Posteventlink.findOne({postId: post.id, auditstat: true});
+
+
     return like
       ? {
           success: true,
           voteStatus: false,
-          id: postId,
+          likeItem: {
+            post: post,
+            isEvent: post.isEvent,
+            creatorStatus: req.session.userId === post.creatorId,
+            eventId: pel ? pel.eventId : undefined,
+            eventName: pel ? pel.eventName: undefined
+          },
           likeNumber: post.likeNumber,
         }
       : {
           success: true,
           voteStatus: true,
-          id: postId,
+          likeItem: {
+            post: post,
+            isEvent: post.isEvent,
+            creatorStatus: req.session.userId === post.creatorId,
+            eventId: pel ? pel.eventId : undefined,
+            eventName: pel ? pel.eventName: undefined
+          },
           likeNumber: post.likeNumber,
         };
   }

@@ -32,7 +32,7 @@ import { Post } from "../entities/Post";
 import { AdminApproval, Eventvolunteer } from "../entities/Eventvolunteer";
 import { Taskvolunteer } from "../entities/Taskvolunteer";
 import { createEventVolunteerListLoader } from "../utils/dataloaders/createEventVolunteerListLoader";
-import { LikeResponse } from "../utils/cardContainers/LikeResponse";
+import { EventLikeResponse } from "../utils/cardContainers/LikeResponse";
 
 @ObjectType()
 export class EventResponse {
@@ -186,12 +186,12 @@ export class EventResolver {
     return adids;
   }
 
-  @Mutation(() => LikeResponse)
+  @Mutation(() => EventLikeResponse)
   @UseMiddleware(isAuth)
   async likeEvent(
     @Arg("eventId", () => Int) eventId: number,
     @Ctx() { req }: MyContext
-  ): Promise<LikeResponse> {
+  ): Promise<EventLikeResponse> {
     const { userId } = req.session;
 
     const event = await Event.findOne({
@@ -257,13 +257,13 @@ export class EventResolver {
       ? {
           success: true,
           voteStatus: false,
-          id: eventId,
+          likeItem: event,
           likeNumber: event.likeNumber,
         }
       : {
           success: true,
           voteStatus: true,
-          id: eventId,
+          likeItem: event,
           likeNumber: event.likeNumber,
         };
   }
