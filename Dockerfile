@@ -1,5 +1,7 @@
 FROM node:14
 
+RUN apt install --upgrade python3-pip
+
 # Create app directory
 WORKDIR /usr/src/app
 
@@ -8,6 +10,7 @@ WORKDIR /usr/src/app
 # where available (npm@5+)
 COPY package.json ./
 COPY yarn.lock ./
+COPY requirements.txt ./
 
 RUN yarn
 
@@ -15,6 +18,7 @@ COPY . .
 COPY .env.production .env
 
 RUN yarn build
+RUN pip install -r requirements.txt
 
 ENV NODE_ENV production
 
