@@ -42,6 +42,7 @@ import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
 import { PaginatedUsers } from "../utils/cardContainers/PaginatedCharitiesAndUsers";
 import { Userprofile } from "../entities/Userprofile";
 import { CategoryResolver } from "./category";
+import { checkTelegramUsername } from "../utils/telegramUtils/checkTelegramUsername";
 
 @ObjectType()
 export class FieldError {
@@ -61,6 +62,9 @@ class UserResponse {
 
   @Field(() => [User], { nullable: true })
   userList?: User[];
+
+  @Field(() => Int, {nullable: true})
+  timeout?: number
 
   @Field(() => Boolean)
   success: boolean;
@@ -389,8 +393,20 @@ export class UserResolver {
       return {
         success: false,
         errors: [
-          { field: "Fatal", message: "Please contact the Givehub Developers." },
+          { field: "Fatal", message: "Please contact the Givehub Developers." }, 
         ],
+      };
+    }
+
+    if (options.telegramHandle) {
+      const res = checkTelegramUsername(options.telegramHandle);
+      console.log(res);
+      if (!res.success) {
+        return {
+          success: res.success,
+          errors: res.errors,
+          timeout: res.timeout
+        }
       };
     }
 

@@ -1,5 +1,7 @@
 FROM node:14
 
+# Runs python language dependencies
+RUN apt-get update || : && apt-get install python3 -y
 RUN apt install --upgrade python3-pip
 
 # Create app directory

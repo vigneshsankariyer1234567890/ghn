@@ -7,5 +7,7 @@ api_hash = config('TELE_API_HASH')
 sessionStr = config('TELE_SESSION_STR')
 # prodSessionStr = check .env.production
 
-with TelegramClient(StringSession(sessionStr), api_id, api_hash) as client:
-    client.loop.run_until_complete(client.send_message('me', 'develop'))
+client = TelegramClient(StringSession(sessionStr), api_id, api_hash)
+
+## Boiler plate for setting up telegram client 
+ 
