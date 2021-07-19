@@ -243,6 +243,13 @@ export class UserResolver {
     return User.findOne(req.session.userId);
   }
 
+  @Query(() => User, { nullable: true })
+  user(@Arg("id") id: number):Promise<User | undefined> {
+    // you are not logged in
+
+    return User.findOne(id);
+  }
+
   @Mutation(() => UserResponse)
   async register(
     @Arg("options") options: UsernamePasswordInput,
@@ -400,7 +407,6 @@ export class UserResolver {
 
     if (options.telegramHandle) {
       const res = checkTelegramUsername(options.telegramHandle);
-      console.log(res);
       if (!res.success) {
         return {
           success: res.success,
@@ -408,7 +414,7 @@ export class UserResolver {
           timeout: res.timeout
         }
       };
-    }
+    } 
 
     if (options.categories) {
       const resp = await CategoryResolver.updateUserCategories({categories: options.categories}, user.id);
