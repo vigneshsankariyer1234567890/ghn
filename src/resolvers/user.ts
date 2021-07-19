@@ -40,7 +40,7 @@ import { Task } from "../entities/Task";
 import { Taskvolunteer } from "../entities/Taskvolunteer";
 import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
 import { PaginatedUsers } from "../utils/cardContainers/PaginatedCharitiesAndUsers";
-import { Userprofile } from "../entities/Userprofile";
+import { Genders, Userprofile } from "../entities/Userprofile";
 import { CategoryResolver } from "./category";
 import { checkTelegramUsername } from "../utils/telegramUtils/checkTelegramUsername";
 
@@ -441,7 +441,7 @@ export class UserResolver {
       await Userprofile.create({
         user: user,
         about: options.about,
-        gender: options.gender,
+        gender: options.gender ? options.gender : Genders.WITHHELD,
         firstName: options.firstName,
         lastName: options.lastName,
         telegramHandle: options.telegramHandle ? options.telegramHandle : null,

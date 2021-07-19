@@ -14,7 +14,7 @@ export const createUserFriendsLoader = () =>
       .select(`uf.*`)
       .from(Userfriend, `uf`)
       .where(sqlquerystring)
-      .andWhere(`uf.friendreqstatus = ${FriendRequestStatus.ACCEPTED}`)
+      .andWhere(`uf.friendreqstatus = '${FriendRequestStatus.ACCEPTED}'`)
       .getRawMany<Userfriend>();
 
     const userIdToFriend: Record<number, Userfriend[]> = {};
@@ -45,9 +45,9 @@ export const createUserFriendshipLoader = () =>
         .from(Userfriend, `uf`)
         .where(sqlquerystring)
         .andWhere(
-          `uf.friendreqstatus <> ${FriendRequestStatus.REJECTED} 
-          AND uf.friendreqstatus <> ${FriendRequestStatus.BLOCKED_USER1} 
-          AND uf.friendreqstatus <> ${FriendRequestStatus.BLOCKED_USER2}`
+          `uf.friendreqstatus <> '${FriendRequestStatus.REJECTED}' 
+          AND uf.friendreqstatus <> '${FriendRequestStatus.BLOCKED_USER1}' 
+          AND uf.friendreqstatus <> '${FriendRequestStatus.BLOCKED_USER2}'`
         )
         .getRawMany<Userfriend>();
 

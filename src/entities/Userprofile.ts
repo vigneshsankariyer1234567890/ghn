@@ -25,13 +25,14 @@ export class Userprofile extends BaseEntity {
   @Column("text")
   about: string;
 
-  @Field(() => Genders)
+  @Field(() => Genders, {nullable: true})
   @Column({
     type: "enum",
     enum: Genders,
-    default: Genders.WITHHELD
+    // default: Genders.WITHHELD,
+    nullable: true
   })
-  gender: Genders;
+  gender?: Genders;
 
   @Field()
   @Column()

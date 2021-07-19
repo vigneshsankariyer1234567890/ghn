@@ -20,8 +20,8 @@ export class UserProfileUpdateInput {
   @Field()
   about: string
 
-  @Field(() => Genders)
-  gender: Genders
+  @Field(() => Genders, {nullable: true})
+  gender?: Genders
 
   @Field()
   firstName: string;
