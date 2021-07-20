@@ -44,5 +44,8 @@ export class CharityProfileUpdateInput {
   @Field(() => [Int], {nullable: true})
   categories?: number[];
 
+  @Field(() => String, {nullable: true})
+  displayPicture?: string;
+
 
 }

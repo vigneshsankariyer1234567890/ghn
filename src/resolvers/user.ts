@@ -480,10 +480,13 @@ export class UserResolver {
         firstName: options.firstName,
         lastName: options.lastName,
         telegramHandle: options.telegramHandle,
+        displayPicture: options.displayPicture
       }).save();
     } else {
       const ogtele = userprof.telegramHandle;
       const inputtele = options.telegramHandle;
+      const dp = !(userprof.displayPicture)
+      const newdp = !(options.displayPicture)
       if (!ogtele) {
         await getConnection().transaction(async (tm) => {
           await tm
@@ -495,6 +498,7 @@ export class UserResolver {
               firstName: options.firstName,
               lastName: options.lastName,
               telegramHandle: inputtele,
+              displayPicture: dp ? options.displayPicture : newdp ? userprof.displayPicture : options.displayPicture
             })
             .where(`"userId" = :uid`, { uid: user.id })
             .execute();
@@ -512,6 +516,7 @@ export class UserResolver {
               gender: options.gender,
               firstName: options.firstName,
               lastName: options.lastName,
+              displayPicture: dp ? options.displayPicture : newdp ? userprof.displayPicture : options.displayPicture
             })
             .where(`"userId" = :uid`, { uid: user.id })
             .execute();
@@ -529,7 +534,8 @@ export class UserResolver {
             gender: options.gender,
             firstName: options.firstName,
             lastName: options.lastName,
-            telegramHandle: inputtele
+            telegramHandle: inputtele,
+            displayPicture: dp ? options.displayPicture : newdp ? userprof.displayPicture : options.displayPicture
           })
           .where(`"userId" = :uid`, { uid: user.id })
           .execute();
@@ -549,7 +555,6 @@ export class UserResolver {
             .execute()
         })
       }
-      
     }
 
     await user.save();

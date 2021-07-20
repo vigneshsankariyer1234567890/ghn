@@ -83,13 +83,13 @@ export class EventResolver {
     return charityLoader.load(event.charityId);
   }
 
-  @FieldResolver(() => Int, { nullable: true })
+  @FieldResolver(() => Boolean)
   async likeStatus(
     @Root() event: Event,
     @Ctx() { eventLikeLoader, req }: MyContext
-  ) {
+  ): Promise<boolean> {
     if (!req.session.userId) {
-      return null;
+      return false;
     }
 
     const like = await eventLikeLoader.load({
@@ -97,7 +97,7 @@ export class EventResolver {
       userId: req.session.userId,
     });
 
-    return like ? 1 : null;
+    return like ? true : false;
   }
 
   @FieldResolver(() => AdminApproval, { nullable: true })
@@ -217,16 +217,6 @@ export class EventResolver {
       await getConnection().transaction(async (tm) => {
         await tm.delete(Eventlike, { userId: userId, eventId: eventId });
 
-        // await tm.query(
-        //   `
-        //         update event
-        //         set "likeNumber" = "likeNumber" - 1
-        //         where id = $1
-        //         and "likeNumber">0
-        //     `,
-        //   [eventId]
-        // );
-
         if (event.likeNumber > 0) {
           event.likeNumber = event.likeNumber - 1;
         }
@@ -242,15 +232,6 @@ export class EventResolver {
           .into(Eventlike)
           .values({ userId: userId, eventId: eventId })
           .execute();
-
-        // await tm.query(
-        //   `
-        //         update event
-        //         set "likeNumber" = "likeNumber" + 1
-        //         where id = $1
-        //     `,
-        //   [eventId]
-        // );
 
         event.likeNumber = event.likeNumber + 1;
         await event.save();
@@ -358,7 +339,7 @@ export class EventResolver {
 
   @Query(() => Event, { nullable: true })
   event(@Arg("id", () => Int) id: number): Promise<Event | undefined> {
-    return Event.findOne(id);
+    return Event.findOne({where: {id: id, auditstat: true}});
   }
 
   @Mutation(() => EventResponse)
@@ -409,7 +390,8 @@ export class EventResolver {
       description: input.description,
       dateStart: input.dateStart,
       dateEnd: input.dateEnd,
-      venue: input.venue ? input.venue : "",
+      venue: input.venue,
+      imageUrl: input.imageUrl,
       charityId: char,
       creatorId: req.session.userId,
     }).save();
@@ -499,6 +481,7 @@ export class EventResolver {
         dateStart: input.dateStart,
         dateEnd: input.dateEnd,
         venue: input.venue ? input.venue : ev.venue,
+        imageUrl: input.imageUrl ? input.imageUrl : ev.imageUrl
       })
       .where('id = :id and "charityId" = :charityId and auditstat=true', {
         id,

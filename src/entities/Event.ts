@@ -84,6 +84,10 @@ export class Event extends BaseEntity {
     @Column({type: "timestamptz", nullable: true})
     telegramGroupUpdatedDate?: Date;
 
+    @Field(() => String, {nullable: true})
+    @Column({type: "text", nullable: true})
+    imageUrl?: string;
+
     @Field(() => String)
     @CreateDateColumn()
     createdAt: Date;

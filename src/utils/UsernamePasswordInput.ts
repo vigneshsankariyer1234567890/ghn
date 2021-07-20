@@ -32,6 +32,9 @@ export class UserProfileUpdateInput {
   @Field(() => String, {nullable: true})
   telegramHandle?: string;
 
+  @Field(() => String, {nullable: true})
+  displayPicture?: string;
+
   @Field(() => [Int], {nullable: true})
   categories?: number[];
 }

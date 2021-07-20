@@ -18,6 +18,10 @@ export class EventInput {
 
   @Field(() => String, { nullable: true })
   venue?: string;
+
+  @Field(() => String, {nullable: true})
+  imageUrl?: string;
+  
 }
 
 @ObjectType()

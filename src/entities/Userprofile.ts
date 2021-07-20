@@ -44,7 +44,7 @@ export class Userprofile extends BaseEntity {
 
   @Field(() => String, {nullable: true})
   @Column({type: 'text',nullable: true})
-  displayPicture: string | null;
+  displayPicture?: string;
 
   @Field(() => String, {nullable: true})
   @Column({type: 'text',nullable: true})

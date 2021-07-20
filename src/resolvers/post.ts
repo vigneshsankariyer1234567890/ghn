@@ -36,10 +36,10 @@ export class PostResolver {
     return userLoader.load(post.creatorId);
   }
 
-  @FieldResolver(() => Int, { nullable: true })
-  async likeStatus(@Root() post: Post, @Ctx() { likeLoader, req }: MyContext) {
+  @FieldResolver(() => Boolean)
+  async likeStatus(@Root() post: Post, @Ctx() { likeLoader, req }: MyContext): Promise<Boolean> {
     if (!req.session.userId) {
-      return null;
+      return false;
     }
 
     const like = await likeLoader.load({
@@ -47,7 +47,7 @@ export class PostResolver {
       userId: req.session.userId,
     });
 
-    return like ? 1 : null;
+    return like ? true : false;
   }
 
   @FieldResolver(() => Boolean)

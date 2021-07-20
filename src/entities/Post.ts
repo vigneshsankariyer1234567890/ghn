@@ -59,6 +59,10 @@ export class Post extends BaseEntity {
   @Column({type: "boolean", default:false})
   isEvent!: boolean;
 
+  @Field(() => String, {nullable: true})
+  @Column({type: "text", nullable: true})
+  imageUrl?: string;
+
   @Field(() => String)
   @CreateDateColumn()
   createdAt: Date;

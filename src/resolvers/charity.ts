@@ -482,9 +482,12 @@ export class CharityResolver {
         about: options.about,
         links: options.links,
         email: options.email,
-        contactNumber: options.contactNumber
+        contactNumber: options.contactNumber,
+        displayPicture: options.displayPicture
       }).save();
     } else {
+      const dp = !(charityprofs.displayPicture)
+      const newdp = !(options.displayPicture)
       await getConnection().transaction(async (tm) => {
         await tm
           .createQueryBuilder()
@@ -493,7 +496,8 @@ export class CharityResolver {
             about: options.about,
             links: options.links,
             email: options.email,
-            contactNumber: options.contactNumber
+            contactNumber: options.contactNumber,
+            displayPicture: dp ? options.displayPicture : newdp ? charityprofs.displayPicture : options.displayPicture
           })
           .where(`"charityId" = :cid`, { cid: charity.id })
           .execute();
