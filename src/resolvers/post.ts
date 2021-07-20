@@ -22,6 +22,7 @@ import {
 } from "../utils/cardContainers/PostInput";
 import { Posteventlink } from "../entities/Posteventlink";
 import { PostLikeResponse } from "../utils/cardContainers/LikeResponse";
+import { Event } from "../entities/Event";
 
 @Resolver(Post)
 export class PostResolver {
@@ -36,7 +37,7 @@ export class PostResolver {
   }
 
   @FieldResolver(() => Int, { nullable: true })
-  async voteStatus(@Root() post: Post, @Ctx() { likeLoader, req }: MyContext) {
+  async likeStatus(@Root() post: Post, @Ctx() { likeLoader, req }: MyContext) {
     if (!req.session.userId) {
       return null;
     }
@@ -91,16 +92,6 @@ export class PostResolver {
 
         await tm.delete(Like, { userId: userId, postId: postId });
 
-        // await tm.query(
-        //   `
-        //         update post
-        //         set "likeNumber" = "likeNumber" - 1
-        //         where id = $1
-        //         and "likeNumber">0
-        //     `,
-        //   [postId]
-        // );
-
         if (post.likeNumber > 0) {
           post.likeNumber = post.likeNumber - 1;
         }
@@ -117,14 +108,6 @@ export class PostResolver {
           .values({ userId: userId, postId: postId })
           .execute();
 
-        // await tm.query(
-        //   `
-        //         update post
-        //         set "likeNumber" = "likeNumber" + 1
-        //         where id = $1
-        //     `,
-        //   [postId]
-        // );
         post.likeNumber = post.likeNumber + 1;
         await post.save();
       });
@@ -132,40 +115,20 @@ export class PostResolver {
 
     const pel = await Posteventlink.findOne({postId: post.id, auditstat: true});
 
+    if (!pel) {
+      return {success: true, likeItem: new EPost(post)}
+    }
 
-    return like
-      ? {
-          success: true,
-          // voteStatus: false,
-          likeItem: {
-            post: post,
-            isEvent: post.isEvent,
-            creatorStatus: req.session.userId === post.creatorId,
-            eventId: pel ? pel.eventId : undefined,
-            eventName: pel ? pel.eventName: undefined
-          },
-          // likeNumber: post.likeNumber,
-        }
-      : {
-          success: true,
-          // voteStatus: true,
-          likeItem: {
-            post: post,
-            isEvent: post.isEvent,
-            creatorStatus: req.session.userId === post.creatorId,
-            eventId: pel ? pel.eventId : undefined,
-            eventName: pel ? pel.eventName: undefined
-          },
-          // likeNumber: post.likeNumber,
-        };
+    const event = await Event.findOne({id: pel.id})
+
+    return {success: true, likeItem: new EPost(post, event)};
   }
 
   @Query(() => PaginatedPosts)
   async posts(
     @Arg("limit", () => Int) limit: number,
-    // @Arg("sortByLikes") sortByLikes: boolean,
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
-    @Ctx() { req }: MyContext
+    @Ctx() { }: MyContext
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
@@ -190,8 +153,7 @@ export class PostResolver {
       .getRawMany<Post>();
 
     const eposts = await PaginatedPosts.convertPostsToEPosts(
-      posts,
-      req.session.userId
+      posts
     );
 
     return {
@@ -204,39 +166,26 @@ export class PostResolver {
   @Query(() => EPost, { nullable: true })
   async post(
     @Arg("id", () => Int) id: number,
-    @Ctx() { req }: MyContext
+    @Ctx() { eventLoader }: MyContext
   ): Promise<EPost | undefined> {
     const p = await Post.findOne(id);
     if (!p) {
       return undefined;
     }
     if (!p.isEvent) {
-      return {
-        post: p,
-        isEvent: p.isEvent,
-        creatorStatus: !req.session.userId
-          ? false
-          : p.creatorId === req.session.userId,
-      };
+      return {post: p};
     }
-    const eventinfo = await getConnection()
-      .createQueryBuilder()
-      .select('pel."postId"', "postid")
-      .addSelect('pel."eventId"')
-      .addSelect('pel."eventName"')
-      .from(Post, "po")
-      .leftJoin(Posteventlink, "pel", 'pel."postId" = po.id')
-      .where("po.id IN (:...ids)", { ids: [p.id] })
-      .getRawOne<{ postid: number; eventId?: number; eventName?: string }>();
+    const pel = await Posteventlink.findOne({where: {postId: p.id, auditstat: true}});
+
+    if (!pel) {
+      return {post: p};
+    }
+
+    const event = await eventLoader.load(pel.eventId);
 
     return {
       post: p,
-      isEvent: p.isEvent,
-      eventId: eventinfo.eventId,
-      eventName: eventinfo.eventName,
-      creatorStatus: !req.session.userId
-        ? false
-        : p.creatorId === req.session.userId,
+      event: event
     };
   }
 
@@ -250,7 +199,7 @@ export class PostResolver {
       ...input,
       creatorId: req.session.userId,
     }).save();
-    return { post: p, isEvent: false, creatorStatus: true };
+    return { post: p};
   }
 
   @Mutation(() => EPost, { nullable: true })
@@ -271,11 +220,9 @@ export class PostResolver {
       })
       .returning("*")
       .execute();
-
+    
     return {
-      post: result.raw[0],
-      isEvent: result.raw[0].isEvent,
-      creatorStatus: true,
+      post: result.raw[0]
     };
   }
 

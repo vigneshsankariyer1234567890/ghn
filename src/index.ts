@@ -66,13 +66,15 @@ import { createCharityAdminRolesLoader } from "./utils/dataloaders/createCharity
 import { createUserFriendshipLoader, createUserFriendsLoader } from "./utils/dataloaders/createUserFriendLoader";
 import { Userprofile } from "./entities/Userprofile";
 import { Charityprofile } from "./entities/Charityprofile";
+import { TelegramResolver } from "./resolvers/telegram";
+import { createUserPostsLoader } from "./utils/dataloaders/createUserPostsLoader";
 
 const main = async () => {
   const conn = await createConnection({
     type: "postgres",
     url: process.env.DATABASE_URL,
     logging: true,
-    synchronize: true,
+    // synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
     entities: [
       Post,
@@ -97,18 +99,7 @@ const main = async () => {
     ],
   });
 
-  // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
-  // await Charity.delete({});
-  // await conn.createQueryBuilder()
-  //           .update(Post)
-  //           .set({likeNumber: 0})
-  //           .where("id = :id", { id: 6})
-  //           .execute();
-  // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('ADMIN')`);
-  // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('VOLUNTEER')`);
-  // console.log(await Userrole.find()); // remember that primary key generation starts from 1
-  // console.log(await Category.find());
-  // console.log(await Charityrolelink.find());
+  await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
 
   const app = express();
 
@@ -157,6 +148,7 @@ const main = async () => {
         EventvolunteerResolver,
         TaskResolver,
         TaskVolunteerResolver,
+        TelegramResolver
       ],
       validate: false,
     }),
@@ -185,7 +177,8 @@ const main = async () => {
       userFriendshipLoader: createUserFriendshipLoader(),
       userVolunteeredEventsListLoader: createUserVolunteeredEventsListLoader(),
       userProfileLoader: createUserProfileLoader(),
-      charityProfileLoader: createCharityProfileLoader()
+      charityProfileLoader: createCharityProfileLoader(),
+      userPostsLoader: createUserPostsLoader()
     }),
     playground: true,
     introspection: true,

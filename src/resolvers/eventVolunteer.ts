@@ -13,6 +13,7 @@ import { getConnection } from "typeorm";
 import { Event } from "../entities/Event";
 import { AdminApproval, Eventvolunteer } from "../entities/Eventvolunteer";
 import { User } from "../entities/User";
+import { Userprofile } from "../entities/Userprofile";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
 import { EventVolunteerContainer, PaginatedEventVolunteers } from "../utils/cardContainers/PaginatedEventVolunteers";
@@ -36,6 +37,33 @@ export class EventvolunteerResolver {
     @Arg("eventId", () => Int) eventId: number,
     @Ctx() { req }: MyContext
   ): Promise<EventResponse> {
+    if (!req.session.userId) {
+      return {
+        errors: [{ field: "User", message: "You are not signed in." }],
+        success: false,
+      };
+    }
+
+    const up = await Userprofile.findOne({where: { userId: req.session.userId }});
+
+    if (!up) {
+      return {
+        errors: [{ field: "User", message: 
+          `Your user details have not been updated. 
+          Please update your details before proceeding.` }],
+        success: false,
+      }
+    }
+
+    if (!up.telegramHandle) {
+      return {
+        errors: [{ field: "User", message: 
+          `Your Telegram handle needs to be updated. 
+          Please update your Telegram handle before proceeding.` }],
+        success: false,
+      }
+    }
+
     const ev = await Event.findOne({ where: { id: eventId, auditstat: true } });
 
     if (!ev) {
@@ -139,7 +167,7 @@ export class EventvolunteerResolver {
       };
     }
 
-    const ev = await (await Event.findByIds(eventIds)).filter(e => e.auditstat === true);
+    const ev = (await Event.findByIds(eventIds)).filter(e => e.auditstat === true);
 
     if (ev.length === 0) {
       return {
@@ -183,7 +211,7 @@ export class EventvolunteerResolver {
 
     const eventvolunteers = await getConnection()
       .createQueryBuilder(Eventvolunteer, `ev`)
-      .select(`ev."userId", ev.adminapproval, ev."eventId"`,)
+      .select(`ev."userId", ev.adminapproval, ev."eventId", ev."updatedAt"`,)
       .distinct()
       .where(`ev.auditstat = true`)
       .andWhere(`ev."eventId" in (:...eid)`, { eid: eventIds})
@@ -192,16 +220,16 @@ export class EventvolunteerResolver {
       .andWhere(`ev."volunteeringCompleted" = false`)
       .addOrderBy(`ev.adminapproval`, `DESC`)
       .limit(realLimitPlusOne)
-      .getRawMany<{userId: number, adminapproval: AdminApproval, eventId: number}>();
+      .getRawMany<{userId: number, adminapproval: AdminApproval, eventId: number, updatedAt: Date}>();
 
     const users = await User.findByIds(eventvolunteers.slice(0, realLimit).map(ev => ev.userId))
 
     const conts = eventvolunteers.map(ev => {
       const fil = users.filter(u => u.id === ev.userId);
       if (fil.length === 1) {
-        return new EventVolunteerContainer(fil[0], ev.adminapproval, ev.eventId);
+        return new EventVolunteerContainer(fil[0], ev.adminapproval, ev.eventId, ev.updatedAt);
       }
-      return new EventVolunteerContainer(undefined, undefined, undefined);
+      return new EventVolunteerContainer(undefined, undefined, undefined, undefined);
     })
 
     return {

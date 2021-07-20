@@ -31,6 +31,7 @@ import {
   createUserFriendshipLoader,
 } from "./utils/dataloaders/createUserFriendLoader";
 import {createUserVolunteeredEventsListLoader} from "./utils/dataloaders/createEventVolunteerListLoader"
+import { createUserPostsLoader } from "./utils/dataloaders/createUserPostsLoader";
 
 export type MyContext = {
   req: Request & {
@@ -60,5 +61,6 @@ export type MyContext = {
   userFriendshipLoader: ReturnType<typeof createUserFriendshipLoader>;
   userVolunteeredEventsListLoader: ReturnType<typeof createUserVolunteeredEventsListLoader>;
   userProfileLoader: ReturnType<typeof createUserProfileLoader>;
-  charityProfileLoader: ReturnType<typeof createCharityProfileLoader>
+  charityProfileLoader: ReturnType<typeof createCharityProfileLoader>;
+  userPostsLoader: ReturnType<typeof createUserPostsLoader>;
 };

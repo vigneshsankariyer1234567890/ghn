@@ -2,11 +2,19 @@ import { spawnSync } from "child_process";
 import path from "path"
 import {ChannelResponse} from "./createTelegramChannel"
 
-export const addNewUsersToChannel = (channelId: number, channelHash: number, charityAdmins: string, volunteers: string): ChannelResponse => {
-  const dir = path.join(__dirname, "createTelegramChannel.py");
+export const addNewUsersToChannel = (channelId: string, channelHash: string, charityAdmins: string, volunteers: string): ChannelResponse => {
+  if (charityAdmins === "") {
+    charityAdmins = "blank";
+  }
+
+  if (volunteers === "") {
+    volunteers = "blank"
+  }
+  
+  const dir = path.join(__dirname, "addNewUsersToChannel.py");
   const python = spawnSync(
     "python3",
-    ["-u", dir, channelId.toString(), channelHash.toString(), charityAdmins, volunteers],
+    ["-u", dir, channelId, channelHash, charityAdmins, volunteers],
     { encoding: "utf-8", shell: true, serialization: 'json' }
   );
 

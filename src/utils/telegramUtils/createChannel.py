@@ -5,7 +5,6 @@ from decouple import config
 import sys
 from telethon import errors
 import json
-from telethon.tl.functions.channels import InviteToChannelRequest
 from telethon.tl.types import InputPeerChannel
 import csv
 
@@ -31,6 +30,15 @@ for row in reader:
 
 
 async def createGroup(name: str, ab: str):
+    if ads=="blank":
+        return dict({
+            "success": False,
+            "api_id": None,
+            "api_access_hash": None,
+            "errors": [dict({
+                "field": "Charity", "message": "You need to have at least one charity admin."
+            })]
+        })
     try:
         created_private_channel = await client(functions.channels.CreateChannelRequest(
             name,
@@ -40,8 +48,8 @@ async def createGroup(name: str, ab: str):
         new_channel_access_hash = created_private_channel.chats[0].access_hash
         return dict({
             "success": True,
-            "api_id": new_channel_id,
-            "api_access_hash": new_channel_access_hash,
+            "api_id": str(new_channel_id),
+            "api_access_hash": str(new_channel_access_hash),
             "errors": [],
             "timeout": 0
         })
@@ -69,11 +77,20 @@ async def createGroup(name: str, ab: str):
             "errors": [{"field": "Fatal", "message": "Please contact Givehub developers"}],
             "timeout": 150
         })
+    except errors.rpcerrorlist.UserNotMutualContactError as e:
+        f = e.message
+        return dict({
+            "success": False,
+            "api_id": None,
+            "api_access_hash": None,
+            "errors": [{"field": "UserError", "message": "We're unable to add your users as volunteers due to mutual contacts. Please try to export your contacts instead. error: "+f}],
+            "timeout": 150
+        })
     
-async def addCharityAdminsToGroup(api_id: int, api_hash: int, char_users: List[str]):
+async def addCharityAdminsToGroup(api_id: str, api_hash: str, char_users: List[str]):
     try:
-        channel = InputPeerChannel(channel_id=api_id,access_hash=api_hash)
-        await client(InviteToChannelRequest(channel,char_users))
+        channel = InputPeerChannel(channel_id=int(api_id),access_hash=int(api_hash))
+        await client(functions.channels.InviteToChannelRequest(channel,char_users))
         for user in char_users:
             await client.edit_admin(channel,user,is_admin=True)
         return dict({
@@ -100,11 +117,28 @@ async def addCharityAdminsToGroup(api_id: int, api_hash: int, char_users: List[s
             "errors": [{"field": "UserError", "message": "One of the users may have bad privacy settings: "+f}],
             "timeout": 150
         })
+    except errors.rpcerrorlist.UserNotMutualContactError as e:
+        f = e.message
+        return dict({
+            "success": False,
+            "api_id": None,
+            "api_access_hash": None,
+            "errors": [{"field": "UserError", "message": "We're unable to add your users as volunteers due to mutual contacts. Please try to export your contacts instead. error: "+f}],
+            "timeout": 150
+        })
 
-async def addVolunteersToGroup(api_id: int, api_hash: int, volunteers: List[str]):
+async def addVolunteersToGroup(api_id: str, api_hash: str, volunteers: List[str]):
+    if volunteers == "blank":
+        return dict({
+            "success": True,
+            "api_id": api_id,
+            "api_access_hash": api_hash,
+            "errors": [],
+            "timeout": 30
+        })
     try:
-        channel = InputPeerChannel(channel_id=api_id,access_hash=api_hash)
-        await client(InviteToChannelRequest(channel,volunteers))
+        channel = InputPeerChannel(channel_id=int(api_id),access_hash=int(api_hash))
+        await client(functions.channels.InviteToChannelRequest(channel,volunteers))
         return dict({
             "success": True,
             "api_id": api_id,
@@ -127,6 +161,15 @@ async def addVolunteersToGroup(api_id: int, api_hash: int, volunteers: List[str]
             "api_id": None,
             "api_access_hash": None,
             "errors": [{"field": "UserError", "message": "One of the users may have bad privacy settings: "+f}],
+            "timeout": 150
+        })
+    except errors.rpcerrorlist.UserNotMutualContactError as e:
+        f = e.message
+        return dict({
+            "success": False,
+            "api_id": None,
+            "api_access_hash": None,
+            "errors": [{"field": "UserError", "message": "We're unable to add your users as volunteers due to mutual contacts. Please try to export your contacts instead. error: "+f}],
             "timeout": 150
         })
     

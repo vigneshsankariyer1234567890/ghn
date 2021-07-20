@@ -33,6 +33,7 @@ import {
 } from "../utils/CharityDataInput";
 import { Charityprofile } from "../entities/Charityprofile";
 import { CategoryResolver } from "./category";
+import { Userprofile } from "../entities/Userprofile";
 
 @ObjectType()
 class UENResponse {
@@ -173,7 +174,7 @@ export class CharityResolver {
       return {
         errors: [
           {
-            field: "UEN Number",
+            field: "uen",
             message: "Please provide a UEN Number!",
           },
         ],
@@ -185,7 +186,7 @@ export class CharityResolver {
       return {
         errors: [
           {
-            field: "UEN Number",
+            field: "uen",
             message:
               "UEN Number is not valid; please provide a valid UEN Number!",
           },
@@ -200,7 +201,7 @@ export class CharityResolver {
       return {
         errors: [
           {
-            field: "UEN Number",
+            field: "uen",
             message: "A charity with this UEN Number already exists.",
           },
         ],
@@ -225,7 +226,7 @@ export class CharityResolver {
       return {
         errors: [
           {
-            field: "UEN Number",
+            field: "uen",
             message: "No such organisation exists",
           },
         ],
@@ -279,36 +280,56 @@ export class CharityResolver {
       return {
         success: false,
         errors: [
-          { field: "UEN Error", message: "UEN Validation was unsuccessful." },
+          { field: "uen", message: "UEN Validation was unsuccessful." },
         ],
       };
     }
 
     const uendata: UENData = uenresp.uendata;
 
-    if (uendata.entity_name !== options.name) {
-      return {
-        success: false,
-        errors: [
-          {
-            field: "Charity Name",
-            message: "Charity Name does not match entity registered name.",
-          },
-        ],
-      };
-    }
+    // if (uendata.entity_name !== options.name) {
+    //   return {
+    //     success: false,
+    //     errors: [
+    //       {
+    //         field: "Charity Name",
+    //         message: "Charity Name does not match entity registered name.",
+    //       },
+    //     ],
+    //   };
+    // }
 
-    if (uendata.reg_postal_code !== options.postalcode) {
+    if (uendata.reg_postal_code !== options.postalCode) {
       return {
         success: false,
         errors: [
           {
-            field: "Charity Address",
+            field: "postalcode",
             message:
               "The postal code given does not match registered postal code.",
           },
         ],
       };
+    }
+
+    const up = await Userprofile.findOne({where: { userId: req.session.id }});
+
+    if (!up) {
+      return {
+        errors: [{ field: "User", message: 
+          `Your user details have not been updated. 
+          Please update your details before proceeding.` }],
+        success: false,
+      }
+    }
+
+    if (!up.telegramHandle) {
+      return {
+        errors: [{ field: "User", message: 
+          `Your Telegram handle needs to be updated. 
+          Please update your Telegram handle before proceeding.` }],
+        success: false,
+      }
     }
 
     let charity;
@@ -322,7 +343,7 @@ export class CharityResolver {
           name: options.name,
           uen: options.uen,
           physicalAddress: options.physicalAddress,
-          postalcode: options.postalcode,
+          postalCode: options.postalCode,
           charitycreatorId: req.session.userId,
         })
         .returning("*")
@@ -443,10 +464,10 @@ export class CharityResolver {
       charity.physicalAddress !== options.physicalAddress
         ? options.physicalAddress
         : charity.physicalAddress;
-    charity.postalcode =
-      charity.postalcode !== options.postalcode
-        ? options.postalcode
-        : charity.postalcode;
+    charity.postalCode =
+      charity.postalCode !== options.postalCode
+        ? options.postalCode
+        : charity.postalCode;
 
     const charityprofs = await getConnection()
       .createQueryBuilder()
@@ -459,7 +480,9 @@ export class CharityResolver {
       await Charityprofile.create({
         charity: charity,
         about: options.about,
-        links: options.links ? options.links : null,
+        links: options.links,
+        email: options.email,
+        contactNumber: options.contactNumber
       }).save();
     } else {
       await getConnection().transaction(async (tm) => {
@@ -468,7 +491,9 @@ export class CharityResolver {
           .update(Charityprofile)
           .set({
             about: options.about,
-            links: options.links ? options.links : null,
+            links: options.links,
+            email: options.email,
+            contactNumber: options.contactNumber
           })
           .where(`"charityId" = :cid`, { cid: charity.id })
           .execute();

@@ -40,9 +40,10 @@ import { Task } from "../entities/Task";
 import { Taskvolunteer } from "../entities/Taskvolunteer";
 import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
 import { PaginatedUsers } from "../utils/cardContainers/PaginatedCharitiesAndUsers";
-import { Genders, Userprofile } from "../entities/Userprofile";
+import { Userprofile } from "../entities/Userprofile";
 import { CategoryResolver } from "./category";
 import { checkTelegramUsername } from "../utils/telegramUtils/checkTelegramUsername";
+import { EPost } from "../utils/cardContainers/PostInput";
 
 @ObjectType()
 export class FieldError {
@@ -231,6 +232,40 @@ export class UserResolver {
     }
 
     return true;
+  }
+
+  @FieldResolver(() => [EPost], {nullable: true})
+  async posts(
+    @Root() user: User,
+    @Ctx() { userPostsLoader }: MyContext
+  ): Promise<EPost[] | null> {
+    const posts = await userPostsLoader.load(user.id);
+    return posts;
+    
+  }
+
+  @FieldResolver(() => Int)
+  async friendNumber(
+    @Root() user: User,
+    @Ctx() { userFriendsLoader }: MyContext
+  ): Promise<number> {
+    const friends = await userFriendsLoader.load(user.id);
+    if (!friends) {
+      return 0;
+    }
+    return friends.length
+  }
+
+  @FieldResolver(() => Int)
+  async followedCharitiesNumber(
+    @Root() user: User,
+    @Ctx() {userCharityFollowsLoader}: MyContext
+  ): Promise<number> {
+    const follows = await userCharityFollowsLoader.load(user.id);
+    if (!follows) {
+      return 0;
+    }
+    return follows.length;
   }
 
   @Query(() => User, { nullable: true })
@@ -441,12 +476,50 @@ export class UserResolver {
       await Userprofile.create({
         user: user,
         about: options.about,
-        gender: options.gender ? options.gender : Genders.WITHHELD,
+        gender: options.gender,
         firstName: options.firstName,
         lastName: options.lastName,
-        telegramHandle: options.telegramHandle ? options.telegramHandle : null,
+        telegramHandle: options.telegramHandle,
       }).save();
     } else {
+      const ogtele = userprof.telegramHandle;
+      const inputtele = options.telegramHandle;
+      if (!ogtele) {
+        await getConnection().transaction(async (tm) => {
+          await tm
+            .createQueryBuilder()
+            .update(Userprofile)
+            .set({
+              about: options.about,
+              gender: options.gender,
+              firstName: options.firstName,
+              lastName: options.lastName,
+              telegramHandle: inputtele,
+            })
+            .where(`"userId" = :uid`, { uid: user.id })
+            .execute();
+        });
+        await user.save();
+        return { success: true, user: user };
+      }
+      if (!inputtele) {
+        await getConnection().transaction(async (tm) => {
+          await tm
+            .createQueryBuilder()
+            .update(Userprofile)
+            .set({
+              about: options.about,
+              gender: options.gender,
+              firstName: options.firstName,
+              lastName: options.lastName,
+            })
+            .where(`"userId" = :uid`, { uid: user.id })
+            .execute();
+        });
+        await user.save();
+        return { success: true, user: user };
+      }
+      // update User profile first
       await getConnection().transaction(async (tm) => {
         await tm
           .createQueryBuilder()
@@ -456,13 +529,27 @@ export class UserResolver {
             gender: options.gender,
             firstName: options.firstName,
             lastName: options.lastName,
-            telegramHandle: options.telegramHandle
-              ? options.telegramHandle
-              : null,
+            telegramHandle: inputtele
           })
           .where(`"userId" = :uid`, { uid: user.id })
           .execute();
       });
+      // update joined telegram to false and set date as null 
+      // since new telegram handle added
+      if (inputtele !== ogtele ) {
+        await getConnection().transaction(async (tm) => {
+          await tm
+            .createQueryBuilder()
+            .update(Eventvolunteer)
+            .set({
+              joinedTelegram: false,
+              joinedTelegramDate: undefined
+            })
+            .where(`"userId" = :uid`, {uid: user.id})
+            .execute()
+        })
+      }
+      
     }
 
     await user.save();

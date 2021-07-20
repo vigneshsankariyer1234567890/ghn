@@ -6,12 +6,21 @@ export class ChannelResponse {
     success: boolean
     errors: FieldError[]
     timeout: number
-    apiId?: number
-    apiHash?: number
+    apiId?: string
+    apiHash?: string
 }
 
 export const createTelegramChannel = (eventName: string, eventDescription: string, charityAdmins: string, volunteers: string): ChannelResponse => {
-  const dir = path.join(__dirname, "createTelegramChannel.py");
+  const dir = path.join(__dirname, "createChannel.py");
+
+  if (charityAdmins === "") {
+    charityAdmins = "blank"
+  }
+
+  if (volunteers === "") {
+    volunteers = "blank"
+  }
+
   const python = spawnSync(
     "python3",
     ["-u", dir, eventName, eventDescription, charityAdmins, volunteers],

@@ -48,7 +48,7 @@ export class Userprofile extends BaseEntity {
 
   @Field(() => String, {nullable: true})
   @Column({type: 'text',nullable: true})
-  telegramHandle: string | null;
+  telegramHandle?: string;
 
   @Field(() => String)
   @CreateDateColumn()

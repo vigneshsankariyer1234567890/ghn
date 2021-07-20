@@ -6,7 +6,7 @@
   "scripts": {
     "gen-env": "gen-env-types .env -o src/env.d.ts -e .",
     "build": "rimraf dist/ && tsc && yarn copy-py",
-    "watch": "rimraf dist/ && tsc && yarn copy-py && tsc -w",
+    "watch": "rimraf dist/ && yarn copy-py && tsc -w && yarn copy-py",
     "dev": "nodemon dist/index.js",
     "start": "node dist/index.js",
     "start2": "ts-node src/index.ts",

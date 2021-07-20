@@ -14,7 +14,7 @@ export class CharityDataInput {
   @Field()
   physicalAddress!: string;
   @Field()
-  postalcode!: string;
+  postalCode!: string;
 }
 
 @InputType()
@@ -27,13 +27,19 @@ export class CharityProfileUpdateInput {
   physicalAddress!: string;
 
   @Field()
-  postalcode!: string;
+  postalCode!: string;
 
   @Field()
   about: string
 
   @Field(() => String, {nullable: true})
   links?: string
+
+  @Field(() => String, {nullable: true})
+  contactNumber?: string;
+
+  @Field(() => String, {nullable: true})
+  email?: string;
 
   @Field(() => [Int], {nullable: true})
   categories?: number[];

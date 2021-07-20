@@ -38,6 +38,6 @@ export class Charityrolelink extends BaseEntity {
 
     @Field(() => String)
     @UpdateDateColumn()
-    udpatedAt: Date;
+    updatedAt: Date;
 
 }

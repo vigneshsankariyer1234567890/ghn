@@ -17,11 +17,19 @@ export class Charityprofile extends BaseEntity {
 
   @Field(() => String, {nullable: true})
   @Column({type: 'text',nullable: true})
-  displayPicture: string | null;
+  displayPicture?: string;
 
   @Field(() => String, {nullable: true})
   @Column({type: 'text',nullable: true})
-  links: string | null;;
+  links?: string;
+
+  @Field(() => String, {nullable: true})
+  @Column({type: "text", nullable: true})
+  contactNumber?: string;
+
+  @Field(() => String, {nullable: true})
+  @Column({type: 'text', nullable: true})
+  email?: string;
 
   @Field(() => String)
   @CreateDateColumn()

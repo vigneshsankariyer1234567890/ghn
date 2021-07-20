@@ -42,6 +42,9 @@ export class EventResponse {
   @Field(() => Event, { nullable: true })
   event?: Event;
 
+  @Field(() => Int, { nullable: true })
+  timeout?: number
+
   @Field(() => Boolean, { nullable: true })
   success!: boolean;
 }
@@ -81,7 +84,7 @@ export class EventResolver {
   }
 
   @FieldResolver(() => Int, { nullable: true })
-  async voteStatus(
+  async likeStatus(
     @Root() event: Event,
     @Ctx() { eventLikeLoader, req }: MyContext
   ) {
@@ -267,105 +270,6 @@ export class EventResolver {
           // likeNumber: event.likeNumber,
         };
   }
-
-  // @Query(() => PaginatedEvents)
-  // async events(
-  //   @Arg("limit", () => Int) limit: number,
-  //   @Arg("sortByLikes") sortByLikes: boolean,
-  //   @Arg("sortByUpcoming") sortByUpcoming: boolean,
-  //   @Arg("cursor", () => String, { nullable: true }) cursor: string | null
-  // ): Promise<PaginatedEvents> {
-  //   const realLimit = Math.min(50, limit);
-  //   const realLimitPlusOne = realLimit + 1;
-
-  //   const replacements: any[] = [realLimitPlusOne];
-
-  //   if (cursor) {
-  //     replacements.push(new Date(parseInt(cursor))); //cursor null at first
-  //   }
-
-  //   // actual query
-  //   const events = await getConnection().query(
-  //     `
-  //   select e.*
-  //   from event e
-  //   where e.auditstat = TRUE
-  //   ${cursor ? `and e."updatedAt" < $2` : ""}
-  //   order by
-  //       ${sortByUpcoming ? `e."dateStart" DESC,` : ""}
-  //       ${sortByLikes ? `e."likeNumber" DESC,` : ""}
-  //       e."dateStart" DESC
-  //   limit $1
-  //   `,
-  //     replacements
-  //   );
-
-  //   const tot = await getConnection()
-  //     .createQueryBuilder()
-  //     .select("COUNT(ev.*)", "count")
-  //     .from(Event, "ev")
-  //     .getRawOne<number>();
-
-  //   return {
-  //     items: events.slice(0, realLimit),
-  //     hasMore: events.length === realLimitPlusOne,
-  //     total: tot,
-  //   };
-  // }
-
-  // @Query(() => PaginatedEvents)
-  // async eventsByCategories(
-  //   @Arg("limit", () => Int) limit: number,
-  //   @Arg("sortByLikes") sortByLikes: boolean,
-  //   @Arg("sortByUpcoming") sortByUpcoming: boolean,
-  //   @Arg("categories", () => [Number]) categories: number[],
-  //   @Arg("cursor", () => String, { nullable: true }) cursor: string | null
-  // ): Promise<PaginatedEvents> {
-  //   const realLimit = Math.min(50, limit);
-  //   const realLimitPlusOne = realLimit + 1;
-
-  //   const replacements: any[] = [realLimitPlusOne];
-
-  //   const catcsv = categories
-  //     .reduce<string>((a, b) => a + b + `,`, ``)
-  //     .slice(0, -1);
-  //   replacements.push(catcsv);
-
-  //   if (cursor) {
-  //     replacements.push(new Date(parseInt(cursor))); //cursor null at first
-  //   }
-
-  //   // actual query
-  //   const events = await getConnection().query(
-  //     `
-  //     SELECT ev.* FROM (
-  //       SELECT DISTINCT char.*
-  //       FROM charitycategory cc
-  //       INNER JOIN
-  //       (SELECT id FROM unnest(string_to_array( $2, ',')::int[]) AS id
-  //       ) cat
-  //       ON cat.id = cc."categoryId"
-  //       FULL JOIN charity char ON char.id = cc."charityId"
-  //       WHERE cc.auditstat = TRUE
-  //     ) charities
-  //     inner join event ev on charities.id = ev."charityId"
-  //     where ev.auditstat = TRUE
-  //     ${cursor ? `and ev."updatedAt" < $3` : ""}
-  //     order by
-  //       ${sortByUpcoming ? `ev."dateStart" DESC,` : ""}
-  //       ${sortByLikes ? `ev."likeNumber" DESC,` : ""}
-  //       ev."dateStart" DESC
-  //     limit $1;
-  //     `,
-  //     replacements
-  //   );
-
-  //   return {
-  //     items: events.slice(0, realLimit),
-  //     hasMore: events.length === realLimitPlusOne,
-  //     total: events.length
-  //   };
-  // }
 
   @Query(() => PaginatedEvents)
   async searchEvents(
@@ -785,7 +689,7 @@ export class EventResolver {
       creatorId: req.session.userId,
     }).save();
 
-    const pel = await Posteventlink.create({
+    await Posteventlink.create({
       eventId: ev.id,
       eventName: ev.name,
       charityId: ev.charityId,
@@ -794,10 +698,7 @@ export class EventResolver {
 
     const epost: EPost = {
       post: post,
-      isEvent: true,
-      eventId: pel.eventId,
-      eventName: pel.eventName,
-      creatorStatus: true,
+      event: ev
     };
 
     return { success: true, epost: epost };
