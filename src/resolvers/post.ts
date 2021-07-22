@@ -19,10 +19,15 @@ import {
   PaginatedPosts,
   PostInput,
   EPost,
+  PostResponse,
+  PaginatedComments,
 } from "../utils/cardContainers/PostInput";
 import { Posteventlink } from "../entities/Posteventlink";
 import { PostLikeResponse } from "../utils/cardContainers/LikeResponse";
 import { Event } from "../entities/Event";
+import { CommentInput } from "../utils/commentsAndThreads/CommentTree";
+import { Comment } from "../entities/Comment";
+// import { Thread } from "../utils/commentsAndThreads/Thread";
 
 @Resolver(Post)
 export class PostResolver {
@@ -37,7 +42,10 @@ export class PostResolver {
   }
 
   @FieldResolver(() => Boolean)
-  async likeStatus(@Root() post: Post, @Ctx() { likeLoader, req }: MyContext): Promise<Boolean> {
+  async likeStatus(
+    @Root() post: Post,
+    @Ctx() { likeLoader, req }: MyContext
+  ): Promise<Boolean> {
     if (!req.session.userId) {
       return false;
     }
@@ -64,6 +72,14 @@ export class PostResolver {
     }
 
     return true;
+  }
+
+  @FieldResolver(() => [Comment], { nullable: true })
+  async comments(
+    @Root() post: Post,
+    @Ctx() { postCommentsLoader }: MyContext
+  ): Promise<Comment[] | undefined> {
+    return await postCommentsLoader.load(post.id);
   }
 
   @Mutation(() => PostLikeResponse)
@@ -113,22 +129,25 @@ export class PostResolver {
       });
     }
 
-    const pel = await Posteventlink.findOne({postId: post.id, auditstat: true});
+    const pel = await Posteventlink.findOne({
+      postId: post.id,
+      auditstat: true,
+    });
 
     if (!pel) {
-      return {success: true, likeItem: new EPost(post)}
+      return { success: true, likeItem: new EPost(post) };
     }
 
-    const event = await Event.findOne({id: pel.id})
+    const event = await Event.findOne({ id: pel.id });
 
-    return {success: true, likeItem: new EPost(post, event)};
+    return { success: true, likeItem: new EPost(post, event) };
   }
 
   @Query(() => PaginatedPosts)
   async posts(
     @Arg("limit", () => Int) limit: number,
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
-    @Ctx() { }: MyContext
+    @Ctx() {}: MyContext
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
@@ -152,9 +171,7 @@ export class PostResolver {
       .limit(realLimitPlusOne)
       .getRawMany<Post>();
 
-    const eposts = await PaginatedPosts.convertPostsToEPosts(
-      posts
-    );
+    const eposts = await PaginatedPosts.convertPostsToEPosts(posts);
 
     return {
       items: eposts.slice(0, realLimit),
@@ -173,19 +190,21 @@ export class PostResolver {
       return undefined;
     }
     if (!p.isEvent) {
-      return {post: p};
+      return { post: p };
     }
-    const pel = await Posteventlink.findOne({where: {postId: p.id, auditstat: true}});
+    const pel = await Posteventlink.findOne({
+      where: { postId: p.id, auditstat: true },
+    });
 
     if (!pel) {
-      return {post: p};
+      return { post: p };
     }
 
     const event = await eventLoader.load(pel.eventId);
 
     return {
       post: p,
-      event: event
+      event: event,
     };
   }
 
@@ -199,7 +218,7 @@ export class PostResolver {
       ...input,
       creatorId: req.session.userId,
     }).save();
-    return { post: p};
+    return { post: p };
   }
 
   @Mutation(() => EPost, { nullable: true })
@@ -220,9 +239,9 @@ export class PostResolver {
       })
       .returning("*")
       .execute();
-    
+
     return {
-      post: result.raw[0]
+      post: result.raw[0],
     };
   }
 
@@ -263,7 +282,282 @@ export class PostResolver {
       );
     });
 
+    await getConnection().transaction(async (tm) => {
+      tm.query(
+        `
+        update comment 
+        set auditstat = false
+        where "postId" = $1
+      `,
+        [id]
+      );
+    });
+
     return true;
+  }
+
+  @Query(() => PaginatedComments)
+  async postComments(
+    @Arg("postId") postId: number,
+    @Arg("limit") limit: number,
+    @Arg("depth", () => Int, { nullable: true }) depth: number | null
+  ): Promise<PaginatedComments> {
+    const realLimit = Math.min(50, limit);
+    const realLimitPlusOne = realLimit + 1;
+
+    const level = depth ? depth : -1;
+
+    const comments = await getConnection()
+      .createQueryBuilder()
+      .select()
+      .from(Comment, `co`)
+      .where(`level > :lvl`, { lvl: level })
+      .andWhere(`"postId" = :pid`, {pid: postId})
+      .andWhere(`auditstat = true`)
+      .orderBy(`"parentId"`, "ASC", "NULLS FIRST")
+      .addOrderBy(`id`)
+      .limit(realLimitPlusOne)
+      .getRawMany<Comment>();
+
+    return {
+      items: comments.slice(0, realLimit),
+      hasMore: comments.length === realLimitPlusOne,
+      total: comments.length,
+    };
+  }
+
+  @Mutation(() => PostResponse)
+  @UseMiddleware(isAuth)
+  async commentOnPost(
+    @Arg("postId") postId: number,
+    @Arg("input") input: CommentInput,
+    @Ctx() { req }: MyContext
+  ): Promise<PostResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    const post = await Post.findOne({ where: { id: postId, auditstat: true } });
+
+    if (!post) {
+      return {
+        success: false,
+        errors: [{ field: "Post", message: "Post does not exist." }],
+      };
+    }
+
+    if (!input.parentId) {
+      const comm = await Comment.create({
+        text: input.text,
+        authorId: req.session.userId,
+        postId: postId,
+        level: 0,
+        rootId: 0
+      }).save();
+      comm.rootId = comm.id;
+      comm.save();
+      const ep = (await PaginatedPosts.convertPostsToEPosts([post]))[0];
+      return {
+        success: true,
+        epost: ep,
+      };
+    }
+
+    const comment = await Comment.findOne({
+      where: { id: input.parentId, auditstat: true },
+    });
+
+    if (!comment) {
+      return {
+        success: false,
+        errors: [{ field: "Comment", message: "That comment does not exist." }],
+      };
+    }
+
+    await Comment.create({
+      text: input.text,
+      authorId: req.session.userId,
+      postId: postId,
+      level: comment.level + 1,
+      rootId: comment.rootId,
+      parentId: input.parentId,
+    }).save();
+
+    const ep = (await PaginatedPosts.convertPostsToEPosts([post]))[0];
+    return {
+      success: true,
+      epost: ep,
+    };
+  }
+
+  @Mutation(() => PostResponse)
+  @UseMiddleware(isAuth)
+  async updateCommentOnPost(
+    @Arg("commentId") commentId: number,
+    @Arg("input") input: CommentInput,
+    @Ctx() { req }: MyContext
+  ): Promise<PostResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    const comment = await Comment.findOne({
+      where: { id: commentId, auditstat: true },
+    });
+
+    if (!comment) {
+      return {
+        success: false,
+        errors: [{ field: "Comment", message: "That comment does not exist." }],
+      };
+    }
+
+    if (comment.authorId !== req.session.userId) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "User",
+            message: "You are not authorised to update this comment.",
+          },
+        ],
+      };
+    }
+
+    const post = await Post.findOne({
+      where: { id: comment.postId, auditstat: true },
+    });
+
+    if (!post) {
+      comment.auditstat = false;
+      await comment.save();
+      return {
+        success: false,
+        errors: [{ field: "Post", message: "Post does not exist." }],
+      };
+    }
+
+    comment.text = input.text;
+
+    await comment.save();
+
+    const ep = (await PaginatedPosts.convertPostsToEPosts([post]))[0];
+    return {
+      success: true,
+      epost: ep,
+    };
+  }
+
+  @Mutation(() => PostResponse)
+  @UseMiddleware(isAuth)
+  async deleteCommentOnPost(
+    @Arg("commentId") commentId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<PostResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User not authenticated." }],
+      };
+    }
+
+    const comment = await Comment.findOne({
+      where: { id: commentId, auditstat: true },
+    });
+
+    if (!comment) {
+      return {
+        success: false,
+        errors: [{ field: "Comment", message: "That comment does not exist." }],
+      };
+    }
+
+    if (comment.authorId !== req.session.userId) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "User",
+            message: "You are not authorised to delete this comment.",
+          },
+        ],
+      };
+    }
+
+    const post = await Post.findOne({
+      where: { id: comment.postId, auditstat: true },
+    });
+
+    if (!post) {
+      comment.auditstat = false;
+      await comment.save();
+      return {
+        success: false,
+        errors: [{ field: "Post", message: "Post does not exist." }],
+      };
+    }
+
+    const commentArr = await Comment.find({
+      where: { postId: post.id, auditstat: true },
+    });
+
+    const commentIdArr = PostResolver.getCommentIdsAtRoot(
+      [],
+      commentArr,
+      commentId
+    );
+
+    await getConnection().transaction(async (tm) => {
+      await tm
+        .createQueryBuilder()
+        .update(Comment)
+        .set({ auditstat: false })
+        .where(`id in (:...coids)`, { coids: commentIdArr })
+        .execute();
+    });
+
+    const ep = (await PaginatedPosts.convertPostsToEPosts([post]))[0];
+    return {
+      success: true,
+      epost: ep,
+    };
+  }
+
+  // Recursive method to get list of comments rooted at rootId including rootId
+  public static getCommentIdsAtRoot(
+    commentIdArr: number[],
+    commentArr: Comment[],
+    rootId: number
+  ): number[] {
+    // Add rootId to commentIdArr
+    commentIdArr.push(rootId);
+
+    // check for comments which have parent = rootId
+    const filteredComments = commentArr.filter((co) =>
+      !co.parentId ? false : co.parentId === rootId
+    );
+
+    // If comment does not have any children, we are done.
+    if (filteredComments.length === 0) {
+      return commentIdArr;
+    }
+
+    // Ids of children
+    const newRoots = filteredComments.map((fc) => fc.id);
+
+    // Get Ids which are in the comment tree of these
+    newRoots.forEach((n) =>
+      PostResolver.getCommentIdsAtRoot(commentIdArr, commentArr, n)
+    );
+
+    // commentIdArr has been mutated and ids have been added, can return.
+    return commentIdArr;
   }
 }
 
@@ -298,6 +592,18 @@ export async function deletePosts(postIds: number[]): Promise<void> {
     WHERE pel."postId" = pid.postId
     `,
       [postIds.reduce<string>((a, b) => a + b + `,`, ``).slice(0, -1)]
+    );
+  });
+
+  await getConnection().transaction(async (tm) => {
+    tm.query(
+      `
+    UPDATE comment as com
+    SET auditstat = false
+    from (select unnest(string_to_array($1,',')::int[]) as postId ) AS pid
+    WHERE com."postId" = pid.postId
+    `,
+      [postIds.reduce((a, b) => a + b + `,`, ``).slice(0, -1)]
     );
   });
 

@@ -33,6 +33,7 @@ import {
 } from "./utils/dataloaders/createUserFriendLoader";
 import {createUserVolunteeredEventsListLoader} from "./utils/dataloaders/createEventVolunteerListLoader"
 import { createUserPostsLoader } from "./utils/dataloaders/createUserPostsLoader";
+import { createPostCommentsLoader } from "./utils/dataloaders/createPostCommentsLoader";
 
 export type MyContext = {
   req: Request & {
@@ -65,4 +66,5 @@ export type MyContext = {
   charityProfileLoader: ReturnType<typeof createCharityProfileLoader>;
   userPostsLoader: ReturnType<typeof createUserPostsLoader>;
   mutualFriendsLoader: ReturnType<typeof createMutualFriendsLoader>;
+  postCommentsLoader: ReturnType<typeof createPostCommentsLoader>;
 };

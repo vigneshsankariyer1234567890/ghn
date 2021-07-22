@@ -69,6 +69,8 @@ import { Charityprofile } from "./entities/Charityprofile";
 import { TelegramResolver } from "./resolvers/telegram";
 import { createUserPostsLoader } from "./utils/dataloaders/createUserPostsLoader";
 import { RecommenderResolver } from "./resolvers/recommender";
+import { Comment } from "./entities/Comment";
+import { createPostCommentsLoader } from "./utils/dataloaders/createPostCommentsLoader";
 
 const main = async () => {
   const conn = await createConnection({
@@ -96,7 +98,8 @@ const main = async () => {
       Charityfollow,
       Userfriend,
       Userprofile,
-      Charityprofile
+      Charityprofile,
+      Comment
     ],
   });
 
@@ -181,7 +184,8 @@ const main = async () => {
       userProfileLoader: createUserProfileLoader(),
       charityProfileLoader: createCharityProfileLoader(),
       userPostsLoader: createUserPostsLoader(),
-      mutualFriendsLoader: createMutualFriendsLoader()
+      mutualFriendsLoader: createMutualFriendsLoader(),
+      postCommentsLoader: createPostCommentsLoader()
     }),
     playground: true,
     introspection: true,

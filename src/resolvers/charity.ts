@@ -90,20 +90,20 @@ export class CharityResolver {
     return await categoryLoader.loadMany(catids);
   }
 
-  @FieldResolver(() => Int, { nullable: true })
+  @FieldResolver(() => Boolean)
   async followStatus(
     @Root() charity: Charity,
     @Ctx() { req, singleCharityFollowLoader }: MyContext
-  ) {
+  ): Promise<boolean> {
     if (!req.session.userId) {
-      return null;
+      return false;
     }
     const follow = await singleCharityFollowLoader.load({
       charityId: charity.id,
       userId: req.session.userId,
     });
 
-    return follow ? 1 : null;
+    return follow ? true : false;
   }
 
   @FieldResolver(() => [User])

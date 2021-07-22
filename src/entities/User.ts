@@ -21,6 +21,7 @@ import { Charityfollow } from "./Charityfollow";
 import { Taskvolunteer } from "./Taskvolunteer";
 import { Userfriend } from "./Userfriend";
 import { Userprofile } from "./Userprofile";
+import { Comment } from "./Comment";
 
 @ObjectType()
 @Entity()
@@ -78,6 +79,9 @@ export class User extends BaseEntity {
 
   @OneToOne(() => Userprofile, userprof => userprof.user)
   profile: Userprofile
+
+  @OneToOne(() => Comment, comm => comm.author)
+  comments: Comment
 
   @Field(() => String)
   @CreateDateColumn()

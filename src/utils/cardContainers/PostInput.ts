@@ -1,8 +1,10 @@
 import { Field, InputType, ObjectType } from "type-graphql";
 import { getConnection } from "typeorm";
+import { Comment } from "../../entities/Comment";
 import { Event } from "../../entities/Event";
 import { Post } from "../../entities/Post";
 import { Posteventlink } from "../../entities/Posteventlink";
+import { FieldError } from "../../resolvers/user";
 import PaginatedResponse from "./PaginatedResponse";
 
 @InputType()
@@ -27,6 +29,11 @@ export class EPost {
     this.post = post;
     this.event = event;
   }
+}
+
+@ObjectType()
+export class PaginatedComments extends PaginatedResponse(Comment) {
+
 }
 
 @ObjectType()
@@ -80,4 +87,16 @@ export class PaginatedPosts extends PaginatedResponse(EPost) {
 
     return eposts;
   }
+}
+
+@ObjectType()
+export class PostResponse {
+  @Field(() => EPost)
+  epost?: EPost
+
+  @Field()
+  success: boolean
+
+  @Field(() => [FieldError], {nullable: true})
+  errors?: FieldError[]
 }
