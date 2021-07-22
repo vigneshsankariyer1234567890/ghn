@@ -63,3 +63,21 @@ export const createUserFriendshipLoader = () =>
       );
     }
   );
+
+export const createMutualFriendsLoader = () =>
+  new DataLoader<{ user1Id: number; user2Id: number }, number[]>(
+    async (ids) => {
+      const idToUserList: Record<string, number[]> = {};
+      // for each pair of users, query string
+      ids.forEach(async i => {
+        if (i.user1Id !== i.user2Id) {
+          const qs = `select * from mutualfriends` + `(${i.user1Id},${i.user2Id})`;
+          const uids = (await getConnection().query(qs)).map(u=>u.uid);
+          idToUserList[`${i.user1Id}|${i.user2Id}`] = uids;
+        } else {
+          idToUserList[`${i.user1Id}|${i.user2Id}`] = [];
+        }
+      });
+      return ids.map(i => idToUserList[`${i.user1Id}|${i.user2Id}`]);
+    }
+  )

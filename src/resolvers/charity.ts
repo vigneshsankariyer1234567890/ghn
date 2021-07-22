@@ -170,6 +170,9 @@ export class CharityResolver {
   async checkUENNumber(
     @Arg("UENNumber", () => String) UENNumber: string
   ): Promise<UENResponse> {
+    
+    const charityTypes: ReadonlyArray<string> = ["MQ", "MM", "CC", "CS", "MB", "MH", "SS", "PA", "PB"];
+
     if (UENNumber === "") {
       return {
         errors: [
@@ -219,7 +222,7 @@ export class CharityResolver {
       .then(
         (res) =>
           res.data.result.records.length === 1 &&
-          res.data.result.records[0].entity_type === "CC"
+          charityTypes.reduce((a,b) => a || b === res.data.result.records[0].entity_type, false)
       );
 
     if (!res) {

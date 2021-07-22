@@ -268,6 +268,31 @@ export class UserResolver {
     return follows.length;
   }
 
+  @FieldResolver(() => [User])
+  async mutualFriends(
+    @Root() user: User,
+    @Ctx() { userLoader, mutualFriendsLoader, req }: MyContext
+  ): Promise<(User | Error)[]> {
+    if (!req.session.userId) {
+      return [];
+    }
+
+    if (req.session.userId === user.id) {
+      return [];
+    }
+
+    const uids = await mutualFriendsLoader.load({user1Id: user.id, user2Id: req.session.userId});
+    
+    if (!uids) {
+      return [];
+    }
+
+    if (uids.length === 0) {
+      return [];
+    }
+    return await userLoader.loadMany(uids);
+  }
+
   @Query(() => User, { nullable: true })
   me(@Ctx() { req }: MyContext) {
     // you are not logged in
@@ -786,15 +811,13 @@ export class UserResolver {
     });
 
     if (userfriend) {
-      if (userfriend.friendreqstatus === FriendRequestStatus.ACCEPTED) {
+      if (userfriend.friendreqstatus === FriendRequestStatus.ACCEPTED
+          || userfriend.friendreqstatus === FriendRequestStatus.USER1_REQ ||
+          userfriend.friendreqstatus === FriendRequestStatus.USER2_REQ
+        ) {
+        await userfriend.remove();
         return {
-          success: false,
-          errors: [
-            {
-              field: "Friend",
-              message: "You are already friends.",
-            },
-          ],
+          success: true
         };
       }
 
@@ -807,22 +830,7 @@ export class UserResolver {
           errors: [
             {
               field: "Friend",
-              message: "You have either been blocked or have blocked the user.",
-            },
-          ],
-        };
-      }
-
-      if (
-        userfriend.friendreqstatus === FriendRequestStatus.USER1_REQ ||
-        userfriend.friendreqstatus === FriendRequestStatus.USER2_REQ
-      ) {
-        return {
-          success: false,
-          errors: [
-            {
-              field: "Friend",
-              message: "There is already a pending friend request.",
+              message: "Unable to send a friend request.",
             },
           ],
         };
@@ -855,6 +863,7 @@ export class UserResolver {
   @UseMiddleware(isAuth)
   async acceptFriendRequest(
     @Arg("userId", () => Number) userId: number,
+    @Arg("accept") accept: boolean,
     @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
     if (!req.session.userId) {
@@ -953,7 +962,7 @@ export class UserResolver {
       };
     }
 
-    userfriend.friendreqstatus = FriendRequestStatus.ACCEPTED;
+    userfriend.friendreqstatus = accept ? FriendRequestStatus.ACCEPTED : FriendRequestStatus.REJECTED;
     await userfriend.save();
 
     return { success: true };

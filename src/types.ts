@@ -29,6 +29,7 @@ import { createCharityAdminRolesLoader } from "./utils/dataloaders/createCharity
 import {
   createUserFriendsLoader,
   createUserFriendshipLoader,
+  createMutualFriendsLoader,
 } from "./utils/dataloaders/createUserFriendLoader";
 import {createUserVolunteeredEventsListLoader} from "./utils/dataloaders/createEventVolunteerListLoader"
 import { createUserPostsLoader } from "./utils/dataloaders/createUserPostsLoader";
@@ -63,4 +64,5 @@ export type MyContext = {
   userProfileLoader: ReturnType<typeof createUserProfileLoader>;
   charityProfileLoader: ReturnType<typeof createCharityProfileLoader>;
   userPostsLoader: ReturnType<typeof createUserPostsLoader>;
+  mutualFriendsLoader: ReturnType<typeof createMutualFriendsLoader>;
 };

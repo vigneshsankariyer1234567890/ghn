@@ -7,8 +7,8 @@ import PaginatedResponse from "./PaginatedResponse";
 
 @InputType()
 export class PostInput {
-  @Field()
-  title: string;
+  // @Field()
+  // title: string;
   @Field()
   text: string;
   @Field(() => String, {nullable: true})
@@ -53,6 +53,10 @@ export class PaginatedPosts extends PaginatedResponse(EPost) {
     result.forEach((a) => {
       eventIds.push(a.eventId);
     });
+
+    if (eventIds.length === 0) {
+      return postarr.map(p => new EPost(p));
+    }
 
     const events = await getConnection()
       .createQueryBuilder()

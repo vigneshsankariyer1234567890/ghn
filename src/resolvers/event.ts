@@ -139,6 +139,17 @@ export class EventResolver {
     return userLoader.loadMany(evs.map((ev) => ev.userId));
   }
 
+  @FieldResolver(() => Int)
+  async volunteerNumber(
+    @Root() event: Event
+  ): Promise<number> {
+    const evs = await EventResolver.approvedEventDataLoader.load(event.id);
+    if (!evs) {
+      return 0;
+    }
+    return evs.length;
+  }
+
   @FieldResolver(() => [Task], { nullable: true })
   async eventTasks(
     @Root() event: Event,

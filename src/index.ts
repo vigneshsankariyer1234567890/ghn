@@ -63,11 +63,12 @@ import {
   createUserCharityFollowsLoader,
 } from "./utils/dataloaders/createCharityFollowLoader";
 import { createCharityAdminRolesLoader } from "./utils/dataloaders/createCharityAdminRoleLoader";
-import { createUserFriendshipLoader, createUserFriendsLoader } from "./utils/dataloaders/createUserFriendLoader";
+import { createMutualFriendsLoader, createUserFriendshipLoader, createUserFriendsLoader } from "./utils/dataloaders/createUserFriendLoader";
 import { Userprofile } from "./entities/Userprofile";
 import { Charityprofile } from "./entities/Charityprofile";
 import { TelegramResolver } from "./resolvers/telegram";
 import { createUserPostsLoader } from "./utils/dataloaders/createUserPostsLoader";
+import { RecommenderResolver } from "./resolvers/recommender";
 
 const main = async () => {
   const conn = await createConnection({
@@ -148,7 +149,8 @@ const main = async () => {
         EventvolunteerResolver,
         TaskResolver,
         TaskVolunteerResolver,
-        TelegramResolver
+        TelegramResolver,
+        RecommenderResolver
       ],
       validate: false,
     }),
@@ -178,7 +180,8 @@ const main = async () => {
       userVolunteeredEventsListLoader: createUserVolunteeredEventsListLoader(),
       userProfileLoader: createUserProfileLoader(),
       charityProfileLoader: createCharityProfileLoader(),
-      userPostsLoader: createUserPostsLoader()
+      userPostsLoader: createUserPostsLoader(),
+      mutualFriendsLoader: createMutualFriendsLoader()
     }),
     playground: true,
     introspection: true,
