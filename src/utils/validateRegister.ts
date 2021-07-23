@@ -1,9 +1,12 @@
 import { UsernamePasswordInput } from "./UsernamePasswordInput";
-import * as EmailValidator from  "email-validator"
+import validate from "deep-email-validator";
 
 
-export const validateRegister = (options: UsernamePasswordInput) => {
-    if (! (EmailValidator.validate(options.email))) {
+
+export const validateRegister = async (options: UsernamePasswordInput) => {
+    const valid = (await validate(options.email)).valid;
+
+    if (!valid) {
       return [
         {
           field: "email",
@@ -12,11 +15,11 @@ export const validateRegister = (options: UsernamePasswordInput) => {
       ];
     }
   
-    if (options.username.length <= 2) {
+    if (options.username.length <= 8) {
       return [
         {
           field: "username",
-          message: "length must be greater than 2",
+          message: "length must be greater than 8",
         },
       ];
     }
@@ -30,11 +33,11 @@ export const validateRegister = (options: UsernamePasswordInput) => {
       ];
     }
   
-    if (options.password.length <= 2) {
+    if (options.password.length <= 8) {
       return [
         {
           field: "password",
-          message: "length must be greater than 2",
+          message: "length must be greater than 8",
         },
       ];
     }

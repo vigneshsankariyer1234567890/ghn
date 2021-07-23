@@ -44,7 +44,8 @@ import { Userprofile } from "../entities/Userprofile";
 import { CategoryResolver } from "./category";
 import { checkTelegramUsername } from "../utils/telegramUtils/checkTelegramUsername";
 import { EPost } from "../utils/cardContainers/PostInput";
-import * as EmailValidator from "email-validator";
+import validate from "deep-email-validator";
+
 
 @ObjectType()
 export class FieldError {
@@ -318,7 +319,7 @@ export class UserResolver {
     @Arg("options") options: UsernamePasswordInput,
     @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
-    const errors = validateRegister(options);
+    const errors = await validateRegister(options);
     if (errors) {
       return { success: false, errors };
     }
@@ -468,7 +469,9 @@ export class UserResolver {
       };
     }
 
-    if (!EmailValidator.validate(options.email)) {
+    const valid = (await validate(options.email)).valid;
+
+    if (!valid) {
       return {
         success: false,
         errors: [
