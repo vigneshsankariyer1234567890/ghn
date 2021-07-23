@@ -44,6 +44,7 @@ import { Userprofile } from "../entities/Userprofile";
 import { CategoryResolver } from "./category";
 import { checkTelegramUsername } from "../utils/telegramUtils/checkTelegramUsername";
 import { EPost } from "../utils/cardContainers/PostInput";
+import * as EmailValidator from "email-validator";
 
 @ObjectType()
 export class FieldError {
@@ -64,8 +65,8 @@ class UserResponse {
   @Field(() => [User], { nullable: true })
   userList?: User[];
 
-  @Field(() => Int, {nullable: true})
-  timeout?: number
+  @Field(() => Int, { nullable: true })
+  timeout?: number;
 
   @Field(() => Boolean)
   success: boolean;
@@ -234,14 +235,13 @@ export class UserResolver {
     return true;
   }
 
-  @FieldResolver(() => [EPost], {nullable: true})
+  @FieldResolver(() => [EPost], { nullable: true })
   async posts(
     @Root() user: User,
     @Ctx() { userPostsLoader }: MyContext
   ): Promise<EPost[] | null> {
     const posts = await userPostsLoader.load(user.id);
     return posts;
-    
   }
 
   @FieldResolver(() => Int)
@@ -253,13 +253,13 @@ export class UserResolver {
     if (!friends) {
       return 0;
     }
-    return friends.length
+    return friends.length;
   }
 
   @FieldResolver(() => Int)
   async followedCharitiesNumber(
     @Root() user: User,
-    @Ctx() {userCharityFollowsLoader}: MyContext
+    @Ctx() { userCharityFollowsLoader }: MyContext
   ): Promise<number> {
     const follows = await userCharityFollowsLoader.load(user.id);
     if (!follows) {
@@ -281,8 +281,11 @@ export class UserResolver {
       return [];
     }
 
-    const uids = await mutualFriendsLoader.load({user1Id: user.id, user2Id: req.session.userId});
-    
+    const uids = await mutualFriendsLoader.load({
+      user1Id: user.id,
+      user2Id: req.session.userId,
+    });
+
     if (!uids) {
       return [];
     }
@@ -304,7 +307,7 @@ export class UserResolver {
   }
 
   @Query(() => User, { nullable: true })
-  user(@Arg("id") id: number):Promise<User | undefined> {
+  user(@Arg("id") id: number): Promise<User | undefined> {
     // you are not logged in
 
     return User.findOne(id);
@@ -460,7 +463,19 @@ export class UserResolver {
       return {
         success: false,
         errors: [
-          { field: "Fatal", message: "Please contact the Givehub Developers." }, 
+          { field: "Fatal", message: "Please contact the Givehub Developers." },
+        ],
+      };
+    }
+
+    if (!EmailValidator.validate(options.email)) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "email",
+            message: "Please key in a valid email.",
+          },
         ],
       };
     }
@@ -471,18 +486,21 @@ export class UserResolver {
         return {
           success: res.success,
           errors: res.errors,
-          timeout: res.timeout
-        }
-      };
-    } 
+          timeout: res.timeout,
+        };
+      }
+    }
 
     if (options.categories) {
-      const resp = await CategoryResolver.updateUserCategories({categories: options.categories}, user.id);
+      const resp = await CategoryResolver.updateUserCategories(
+        { categories: options.categories },
+        user.id
+      );
       if (!resp.success) {
         return {
           success: false,
-          errors: resp.errors
-        }
+          errors: resp.errors,
+        };
       }
     }
 
@@ -505,13 +523,13 @@ export class UserResolver {
         firstName: options.firstName,
         lastName: options.lastName,
         telegramHandle: options.telegramHandle,
-        displayPicture: options.displayPicture
+        displayPicture: options.displayPicture,
       }).save();
     } else {
       const ogtele = userprof.telegramHandle;
       const inputtele = options.telegramHandle;
-      const dp = !(userprof.displayPicture)
-      const newdp = !(options.displayPicture)
+      const dp = !userprof.displayPicture;
+      const newdp = !options.displayPicture;
       if (!ogtele) {
         await getConnection().transaction(async (tm) => {
           await tm
@@ -523,7 +541,11 @@ export class UserResolver {
               firstName: options.firstName,
               lastName: options.lastName,
               telegramHandle: inputtele,
-              displayPicture: dp ? options.displayPicture : newdp ? userprof.displayPicture : options.displayPicture
+              displayPicture: dp
+                ? options.displayPicture
+                : newdp
+                ? userprof.displayPicture
+                : options.displayPicture,
             })
             .where(`"userId" = :uid`, { uid: user.id })
             .execute();
@@ -541,7 +563,11 @@ export class UserResolver {
               gender: options.gender,
               firstName: options.firstName,
               lastName: options.lastName,
-              displayPicture: dp ? options.displayPicture : newdp ? userprof.displayPicture : options.displayPicture
+              displayPicture: dp
+                ? options.displayPicture
+                : newdp
+                ? userprof.displayPicture
+                : options.displayPicture,
             })
             .where(`"userId" = :uid`, { uid: user.id })
             .execute();
@@ -560,25 +586,29 @@ export class UserResolver {
             firstName: options.firstName,
             lastName: options.lastName,
             telegramHandle: inputtele,
-            displayPicture: dp ? options.displayPicture : newdp ? userprof.displayPicture : options.displayPicture
+            displayPicture: dp
+              ? options.displayPicture
+              : newdp
+              ? userprof.displayPicture
+              : options.displayPicture,
           })
           .where(`"userId" = :uid`, { uid: user.id })
           .execute();
       });
-      // update joined telegram to false and set date as null 
+      // update joined telegram to false and set date as null
       // since new telegram handle added
-      if (inputtele !== ogtele ) {
+      if (inputtele !== ogtele) {
         await getConnection().transaction(async (tm) => {
           await tm
             .createQueryBuilder()
             .update(Eventvolunteer)
             .set({
               joinedTelegram: false,
-              joinedTelegramDate: undefined
+              joinedTelegramDate: undefined,
             })
-            .where(`"userId" = :uid`, {uid: user.id})
-            .execute()
-        })
+            .where(`"userId" = :uid`, { uid: user.id })
+            .execute();
+        });
       }
     }
 
@@ -679,7 +709,10 @@ export class UserResolver {
 
     await sendEmail(
       email,
-      `<a href="https://givehub.vercel.app/change-password/${token}">reset password</a>`
+      ` Hey there! You just requested to change your password at Givehub.
+      <a href="https://givehub.vercel.app/change-password/${token}">Click on this to reset your password!</a>
+      `,
+      "Givehub password change request."
     );
 
     return true;
@@ -757,11 +790,12 @@ export class UserResolver {
       .select(`uf.*`)
       .from(Userfriend, `uf`)
       .where(
-        `uf."user1Id" = ${req.session.userId} or uf."user2Id" = ${req.session.userId}`
+        `(uf."user1Id" = ${req.session.userId} and uf.friendreqstatus = 'user2_req') 
+        or (uf."user2Id" = ${req.session.userId} and uf.friendreqstatus = 'user1_req')`
       )
-      .andWhere(
-        `uf.friendreqstatus = 'user1_req' or uf.friendreqstatus = 'user2_req'`
-      )
+      // .andWhere(
+      //   `uf.friendreqstatus = 'user1_req' or uf.friendreqstatus = 'user2_req'`
+      // )
       .getRawMany<Userfriend>();
 
     const uids = friends.map((f) =>
@@ -811,13 +845,14 @@ export class UserResolver {
     });
 
     if (userfriend) {
-      if (userfriend.friendreqstatus === FriendRequestStatus.ACCEPTED
-          || userfriend.friendreqstatus === FriendRequestStatus.USER1_REQ ||
-          userfriend.friendreqstatus === FriendRequestStatus.USER2_REQ
-        ) {
+      if (
+        userfriend.friendreqstatus === FriendRequestStatus.ACCEPTED ||
+        userfriend.friendreqstatus === FriendRequestStatus.USER1_REQ ||
+        userfriend.friendreqstatus === FriendRequestStatus.USER2_REQ
+      ) {
         await userfriend.remove();
         return {
-          success: true
+          success: true,
         };
       }
 
@@ -962,7 +997,9 @@ export class UserResolver {
       };
     }
 
-    userfriend.friendreqstatus = accept ? FriendRequestStatus.ACCEPTED : FriendRequestStatus.REJECTED;
+    userfriend.friendreqstatus = accept
+      ? FriendRequestStatus.ACCEPTED
+      : FriendRequestStatus.REJECTED;
     await userfriend.save();
 
     return { success: true };

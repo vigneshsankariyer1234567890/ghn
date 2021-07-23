@@ -1,11 +1,13 @@
 import { UsernamePasswordInput } from "./UsernamePasswordInput";
+import * as EmailValidator from  "email-validator"
+
 
 export const validateRegister = (options: UsernamePasswordInput) => {
-    if (!options.email.includes("@")) {
+    if (! (EmailValidator.validate(options.email))) {
       return [
         {
           field: "email",
-          message: "invalid email",
+          message: "Please key in a valid email.",
         },
       ];
     }
