@@ -8,7 +8,7 @@ export const validateRegister = async (options: UsernamePasswordInput) => {
 
     if (!valid) {
       return [
-        {
+        { 
           field: "email",
           message: "Please key in a valid email.",
         },
