@@ -320,7 +320,7 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async register(
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { req, redis }: MyContext
+    @Ctx() { redis }: MyContext
   ): Promise<UserResponse> {
     const errors = await validateRegister(options);
     if (errors) {
@@ -352,8 +352,12 @@ export class UserResolver {
           errors: [
             {
               field: "username",
-              message: "username already taken",
+              message: "Either username or email already taken",
             },
+            {
+              field: "email",
+              message: "Either username or email already taken"
+            }
           ],
         };
       }
@@ -394,7 +398,7 @@ export class UserResolver {
         errors: [{ field: "email", message: "this is an invalid email" }],
       };
     }
-    req.session.userId = user.id;
+    // req.session.userId = user.id;
 
     return { success: true, user };
   }
