@@ -46,7 +46,6 @@ import { checkTelegramUsername } from "../utils/telegramUtils/checkTelegramUsern
 import { EPost } from "../utils/cardContainers/PostInput";
 import validate from "deep-email-validator";
 
-
 @ObjectType()
 export class FieldError {
   @Field()
@@ -1091,13 +1090,36 @@ export class UserResolver {
     // actual query
     const users = await getConnection().query(
       `
-      SELECT * FROM "user" us
-      ${input ? `where us."username" ILIKE '` + input + `%'` : ""}
+      SELECT us.* FROM "user" us
+      LEFT OUTER JOIN userprofile usp on us.id = usp."userId"
+      ${
+        input
+          ? `where us."username" ILIKE '` +
+            input +
+            `%' or usp."firstName" ILIKE '` +
+            input +
+            `%' or usp."lastName" ILIKE '` +
+            input +
+            `%'`
+          : ""
+      }
       ${
         cursor
-          ? input
-            ? `and us."username" > '` + cursor + `'`
-            : `where us."username" > '` + cursor + `'`
+          ? input 
+            ? `and (us."username" > '` +
+              cursor +
+              `' or usp."firstName" > '` +
+              cursor +
+              `' or usp."lastName" > '` +
+              cursor +
+              `')`
+            : `where (us."username" > '` +
+              cursor +
+              `' or usp."firstName" > '` +
+              cursor +
+              `' or usp."lastName" > '` +
+              cursor +
+              `')`
           : ""
       }
       order by us."username" ASC
@@ -1108,8 +1130,19 @@ export class UserResolver {
     const tot = await getConnection().query(
       `
       select COUNT(*) as "count" from (
-        SELECT * FROM "user" us
-        ${input ? `where us."username" ILIKE '` + input + `%'` : ""}
+        SELECT us.* FROM "user" us
+        LEFT OUTER JOIN userprofile usp on us.id = usp."userId"
+        ${
+          input
+            ? `where us."username" ILIKE '` +
+              input +
+              `%' or usp."firstName" ILIKE '` +
+              input +
+              `%' or usp."lastName" ILIKE '` +
+              input +
+              `%'`
+            : ""
+        }
       ) c
       `
     );

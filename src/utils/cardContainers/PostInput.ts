@@ -33,7 +33,11 @@ export class EPost {
 
 @ObjectType()
 export class PaginatedComments extends PaginatedResponse(Comment) {
+  @Field()
+  success: boolean
 
+  @Field(() => [FieldError], {nullable: true})
+  errors?: FieldError[]
 }
 
 @ObjectType()

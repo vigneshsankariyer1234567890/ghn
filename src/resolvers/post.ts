@@ -82,6 +82,18 @@ export class PostResolver {
     return await postCommentsLoader.load(post.id);
   }
 
+  @FieldResolver(() => Int)
+  async commentNumber(
+    @Root() post: Post,
+    @Ctx() { postCommentsLoader }: MyContext
+  ): Promise<number> {
+    const comms = await postCommentsLoader.load(post.id);
+    if (!comms) {
+      return 0;
+    }
+    return comms.length;
+  }
+
   @Mutation(() => PostLikeResponse)
   @UseMiddleware(isAuth)
   async likePost(
@@ -312,7 +324,7 @@ export class PostResolver {
       .select()
       .from(Comment, `co`)
       .where(`level > :lvl`, { lvl: level })
-      .andWhere(`"postId" = :pid`, {pid: postId})
+      .andWhere(`"postId" = :pid`, { pid: postId })
       .andWhere(`auditstat = true`)
       .orderBy(`"parentId"`, "ASC", "NULLS FIRST")
       .addOrderBy(`id`)
@@ -323,7 +335,47 @@ export class PostResolver {
       items: comments.slice(0, realLimit),
       hasMore: comments.length === realLimitPlusOne,
       total: comments.length,
+      success: true,
     };
+  }
+
+  @Query(() => PaginatedComments)
+  async getCommentsAtRoot(
+    @Arg("rootCommentId") rootCommentId: number,
+    @Arg("limit") limit: number,
+    @Arg("depth", () => Int, { nullable: true }) depth?: number 
+  ): Promise<PaginatedComments> {
+    const realLimit = Math.min(50, limit);
+    const realLimitPlusOne = realLimit + 1;
+
+    const comment = await Comment.findOne({
+      where: { id: rootCommentId, auditstat: true },
+    });
+
+    if (!comment) {
+      return {
+        items: [],
+        hasMore: false,
+        total: 0,
+        success: false,
+        errors: [
+          { field: "rootCommentId", message: "That comment does not exist." },
+        ],
+      };
+    }
+
+    const allComments = await Comment.find({
+      where: { auditstat: true, postId: comment.postId },
+    });
+
+    const commentsRootedAtId = PostResolver.getCommentsAtRoot([],allComments,comment, depth);
+
+    return{
+      items: commentsRootedAtId.slice(0,realLimit),
+      hasMore: commentsRootedAtId.length >= realLimitPlusOne,
+      total: commentsRootedAtId.length,
+      success: true
+    }    
   }
 
   @Mutation(() => PostResponse)
@@ -355,7 +407,7 @@ export class PostResolver {
         authorId: req.session.userId,
         postId: postId,
         level: 0,
-        rootId: 0
+        rootId: 0,
       }).save();
       comm.rootId = comm.id;
       comm.save();
@@ -533,10 +585,39 @@ export class PostResolver {
   public static getCommentIdsAtRoot(
     commentIdArr: number[],
     commentArr: Comment[],
-    rootId: number
+    rootId: number,
+    depth?: number
   ): number[] {
     // Add rootId to commentIdArr
     commentIdArr.push(rootId);
+
+    if (!depth) {
+      // check for comments which have parent = rootId
+      const filteredComments = commentArr.filter((co) =>
+        !co.parentId ? false : co.parentId === rootId
+      );
+
+      // If comment does not have any children, we are done.
+      if (filteredComments.length === 0) {
+        return commentIdArr;
+      }
+
+      // Ids of children
+      const newRoots = filteredComments.map((fc) => fc.id);
+
+      // Get Ids which are in the comment tree of these
+      newRoots.forEach((n) =>
+        PostResolver.getCommentIdsAtRoot(commentIdArr, commentArr, n)
+      );
+
+      // commentIdArr has been mutated and ids have been added, can return.
+      return commentIdArr;
+    }
+
+    // if depth === 0, we have reached the bottom, we are done
+    if (depth === 0) {
+      return commentIdArr;
+    }
 
     // check for comments which have parent = rootId
     const filteredComments = commentArr.filter((co) =>
@@ -553,10 +634,69 @@ export class PostResolver {
 
     // Get Ids which are in the comment tree of these
     newRoots.forEach((n) =>
-      PostResolver.getCommentIdsAtRoot(commentIdArr, commentArr, n)
+      PostResolver.getCommentIdsAtRoot(commentIdArr, commentArr, n, depth-1)
     );
 
-    // commentIdArr has been mutated and ids have been added, can return.
+    // if depth === 0, we have reached the bottom, we are done
+    return commentIdArr;
+  }
+
+  public static getCommentsAtRoot(
+    commentIdArr: Comment[],
+    commentArr: Comment[],
+    rootComment: Comment,
+    depth?: number
+  ): Comment[] {
+    // Add rootId to commentIdArr
+    commentIdArr.push(rootComment);
+
+    if (!depth) {
+      // check for comments which have parent = rootId
+      const filteredComments = commentArr.filter((co) =>
+        !co.parentId ? false : co.parentId === rootComment.id
+      );
+
+      // If comment does not have any children, we are done.
+      if (filteredComments.length === 0) {
+        return commentIdArr;
+      }
+
+      // Ids of children
+      const newRoots = filteredComments.map((fc) => fc);
+
+      // Get Ids which are in the comment tree of these
+      newRoots.forEach((n) =>
+        PostResolver.getCommentsAtRoot(commentIdArr, commentArr, n)
+      );
+
+      // commentIdArr has been mutated and ids have been added, can return.
+      return commentIdArr;
+    }
+
+    // if depth === 0, we have reached the bottom, we are done
+    if (depth === 0) {
+      return commentIdArr;
+    }
+
+    // check for comments which have parent = rootId
+    const filteredComments = commentArr.filter((co) =>
+      !co.parentId ? false : co.parentId === rootComment.id
+    );
+
+    // If comment does not have any children, we are done.
+    if (filteredComments.length === 0) {
+      return commentIdArr;
+    }
+
+    // Ids of children
+    const newRoots = filteredComments.map((fc) => fc);
+
+    // Get Ids which are in the comment tree of these
+    newRoots.forEach((n) =>
+      PostResolver.getCommentsAtRoot(commentIdArr, commentArr, n, depth-1)
+    );
+
+    // if depth === 0, we have reached the bottom, we are done
     return commentIdArr;
   }
 }
