@@ -13,6 +13,7 @@ import { getConnection } from "typeorm";
 import { Event } from "../entities/Event";
 import { AdminApproval, Eventvolunteer } from "../entities/Eventvolunteer";
 import { User } from "../entities/User";
+import { Userprofile } from "../entities/Userprofile";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
 import { EventVolunteerContainer, PaginatedEventVolunteers } from "../utils/cardContainers/PaginatedEventVolunteers";
@@ -36,6 +37,33 @@ export class EventvolunteerResolver {
     @Arg("eventId", () => Int) eventId: number,
     @Ctx() { req }: MyContext
   ): Promise<EventResponse> {
+    if (!req.session.userId) {
+      return {
+        errors: [{ field: "User", message: "You are not signed in." }],
+        success: false,
+      };
+    }
+
+    const up = await Userprofile.findOne({where: { userId: req.session.userId }});
+
+    if (!up) {
+      return {
+        errors: [{ field: "User", message: 
+          `Your user details have not been updated. 
+          Please update your details before proceeding.` }],
+        success: false,
+      }
+    }
+
+    if (!up.telegramHandle) {
+      return {
+        errors: [{ field: "User", message: 
+          `Your Telegram handle needs to be updated. 
+          Please update your Telegram handle before proceeding.` }],
+        success: false,
+      }
+    }
+
     const ev = await Event.findOne({ where: { id: eventId, auditstat: true } });
 
     if (!ev) {
@@ -139,7 +167,7 @@ export class EventvolunteerResolver {
       };
     }
 
-    const ev = await (await Event.findByIds(eventIds)).filter(e => e.auditstat === true);
+    const ev = (await Event.findByIds(eventIds)).filter(e => e.auditstat === true);
 
     if (ev.length === 0) {
       return {
@@ -183,7 +211,7 @@ export class EventvolunteerResolver {
 
     const eventvolunteers = await getConnection()
       .createQueryBuilder(Eventvolunteer, `ev`)
-      .select(`ev."userId", ev.adminapproval, ev."eventId"`,)
+      .select(`ev."userId", ev.adminapproval, ev."eventId", ev."updatedAt"`,)
       .distinct()
       .where(`ev.auditstat = true`)
       .andWhere(`ev."eventId" in (:...eid)`, { eid: eventIds})
@@ -192,16 +220,16 @@ export class EventvolunteerResolver {
       .andWhere(`ev."volunteeringCompleted" = false`)
       .addOrderBy(`ev.adminapproval`, `DESC`)
       .limit(realLimitPlusOne)
-      .getRawMany<{userId: number, adminapproval: AdminApproval, eventId: number}>();
+      .getRawMany<{userId: number, adminapproval: AdminApproval, eventId: number, updatedAt: Date}>();
 
     const users = await User.findByIds(eventvolunteers.slice(0, realLimit).map(ev => ev.userId))
 
     const conts = eventvolunteers.map(ev => {
       const fil = users.filter(u => u.id === ev.userId);
       if (fil.length === 1) {
-        return new EventVolunteerContainer(fil[0], ev.adminapproval, ev.eventId);
+        return new EventVolunteerContainer(fil[0], ev.adminapproval, ev.eventId, ev.updatedAt);
       }
-      return new EventVolunteerContainer(undefined, undefined, undefined);
+      return new EventVolunteerContainer(undefined, undefined, undefined, undefined);
     })
 
     return {
@@ -211,6 +239,219 @@ export class EventvolunteerResolver {
       total: eventvolunteers.length
     };
   }
+
+  @UseMiddleware(isAuth)
+  @Query(() => PaginatedEventVolunteers)
+  async getPendingVolunteerRequestForEvents(
+    @Arg("eventIds", () => [Int]) eventIds: number[],
+    @Arg("limit", () => Int) limit: number,
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null, // on updatedDate
+    @Ctx() { req }: MyContext
+  ): Promise<PaginatedEventVolunteers> {
+    // this view should be used for charity admins only
+    if (!req.session.userId) {
+      return {
+        success: false,
+        hasMore: false,
+        errors: [{ field: "User", message: "User is not authenticated." }],
+        items: [],
+        total: 0
+      };
+    }
+
+    const charityAdminIds = req.session.charityAdminIds
+
+    if (!charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+        hasMore: false,
+        items: [],
+        total: 0
+      };
+    }
+
+    const ev = (await Event.findByIds(eventIds)).filter(e => e.auditstat === true);
+
+    if (ev.length === 0) {
+      return {
+        success: false,
+        hasMore: false,
+        errors: [{ field: "Event", message: "That event does not exist." }],
+        items: [],
+        total: 0
+      };
+    }
+
+    const adids = ev.reduce(
+      (a,b) => a && charityAdminIds.reduce(
+        (c,d) => c || b.charityId === d, false
+      )
+    , true);
+
+    if (!adids) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+        hasMore: false,
+        items: [],
+        total: 0
+      };
+    }
+
+    const realLimit = Math.min(50, limit);
+    const realLimitPlusOne = realLimit + 1;
+
+    let date: Date;
+
+    if (cursor) {
+      date = new Date(parseInt(cursor));
+    } else {
+      date = new Date(Date.now());
+      date = new Date(date.setHours(date.getHours() + 8));
+    }
+
+    const eventvolunteers = await getConnection()
+      .createQueryBuilder(Eventvolunteer, `ev`)
+      .select(`ev."userId", ev.adminapproval, ev."eventId", ev."updatedAt"`,)
+      .distinct()
+      .where(`ev.auditstat = true`)
+      .andWhere(`ev."eventId" in (:...eid)`, { eid: eventIds})
+      .andWhere(`ev."updatedAt" < :cursor::timestamp`, { cursor: date })
+      .andWhere(`(ev.adminapproval = 'pending')`)
+      .andWhere(`ev."volunteeringCompleted" = false`)
+      .addOrderBy(`ev.adminapproval`, `DESC`)
+      .limit(realLimitPlusOne)
+      .getRawMany<{userId: number, adminapproval: AdminApproval, eventId: number, updatedAt: Date}>();
+
+    const users = await User.findByIds(eventvolunteers.slice(0, realLimit).map(ev => ev.userId))
+
+    const conts = eventvolunteers.map(ev => {
+      const fil = users.filter(u => u.id === ev.userId);
+      if (fil.length === 1) {
+        return new EventVolunteerContainer(fil[0], ev.adminapproval, ev.eventId, ev.updatedAt);
+      }
+      return new EventVolunteerContainer(undefined, undefined, undefined, undefined);
+    })
+
+    return {
+      success: true,
+      hasMore: eventvolunteers.length === realLimitPlusOne,
+      items: conts,
+      total: eventvolunteers.length
+    };
+  }
+
+  @UseMiddleware(isAuth)
+  @Query(() => PaginatedEventVolunteers)
+  async getAcceptedVolunteerRequestListForEvents(
+    @Arg("eventIds", () => [Int]) eventIds: number[],
+    @Arg("limit", () => Int) limit: number,
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null, // on updatedDate
+    @Ctx() { req }: MyContext
+  ): Promise<PaginatedEventVolunteers> {
+    // this view should be used for charity admins only
+    if (!req.session.userId) {
+      return {
+        success: false,
+        hasMore: false,
+        errors: [{ field: "User", message: "User is not authenticated." }],
+        items: [],
+        total: 0
+      };
+    }
+
+    const charityAdminIds = req.session.charityAdminIds
+
+    if (!charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+        hasMore: false,
+        items: [],
+        total: 0
+      };
+    }
+
+    const ev = (await Event.findByIds(eventIds)).filter(e => e.auditstat === true);
+
+    if (ev.length === 0) {
+      return {
+        success: false,
+        hasMore: false,
+        errors: [{ field: "Event", message: "That event does not exist." }],
+        items: [],
+        total: 0
+      };
+    }
+
+    const adids = ev.reduce(
+      (a,b) => a && charityAdminIds.reduce(
+        (c,d) => c || b.charityId === d, false
+      )
+    , true);
+
+    if (!adids) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+        hasMore: false,
+        items: [],
+        total: 0
+      };
+    }
+
+    const realLimit = Math.min(50, limit);
+    const realLimitPlusOne = realLimit + 1;
+
+    let date: Date;
+
+    if (cursor) {
+      date = new Date(parseInt(cursor));
+    } else {
+      date = new Date(Date.now());
+      date = new Date(date.setHours(date.getHours() + 8));
+    }
+
+    const eventvolunteers = await getConnection()
+      .createQueryBuilder(Eventvolunteer, `ev`)
+      .select(`ev."userId", ev.adminapproval, ev."eventId", ev."updatedAt"`,)
+      .distinct()
+      .where(`ev.auditstat = true`)
+      .andWhere(`ev."eventId" in (:...eid)`, { eid: eventIds})
+      .andWhere(`ev."updatedAt" < :cursor::timestamp`, { cursor: date })
+      .andWhere(`(ev.adminapproval = 'approved')`)
+      .andWhere(`ev."volunteeringCompleted" = false`)
+      .addOrderBy(`ev.adminapproval`, `DESC`)
+      .limit(realLimitPlusOne)
+      .getRawMany<{userId: number, adminapproval: AdminApproval, eventId: number, updatedAt: Date}>();
+
+    const users = await User.findByIds(eventvolunteers.slice(0, realLimit).map(ev => ev.userId))
+
+    const conts = eventvolunteers.map(ev => {
+      const fil = users.filter(u => u.id === ev.userId);
+      if (fil.length === 1) {
+        return new EventVolunteerContainer(fil[0], ev.adminapproval, ev.eventId, ev.updatedAt);
+      }
+      return new EventVolunteerContainer(undefined, undefined, undefined, undefined);
+    })
+
+    return {
+      success: true,
+      hasMore: eventvolunteers.length === realLimitPlusOne,
+      items: conts,
+      total: eventvolunteers.length
+    };
+  }
+
 
   @UseMiddleware(isAuth)
   @Mutation(() => UpdateEventVolunteerResponse)

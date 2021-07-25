@@ -30,7 +30,7 @@ export class Charity extends BaseEntity {
 
   @Field()
   @Column()
-  postalcode!: string;
+  postalCode!: string;
 
   @Column()
   charitycreatorId!: number;
@@ -73,7 +73,7 @@ export class Charity extends BaseEntity {
 
   @Field(() => String)
   @UpdateDateColumn()
-  udpatedAt: Date;
+  updatedAt: Date;
 
   
 }

@@ -32,7 +32,7 @@ import { Post } from "../entities/Post";
 import { AdminApproval, Eventvolunteer } from "../entities/Eventvolunteer";
 import { Taskvolunteer } from "../entities/Taskvolunteer";
 import { createEventVolunteerListLoader } from "../utils/dataloaders/createEventVolunteerListLoader";
-import { LikeResponse } from "../utils/cardContainers/LikeResponse";
+import { EventLikeResponse } from "../utils/cardContainers/LikeResponse";
 
 @ObjectType()
 export class EventResponse {
@@ -41,6 +41,9 @@ export class EventResponse {
 
   @Field(() => Event, { nullable: true })
   event?: Event;
+
+  @Field(() => Int, { nullable: true })
+  timeout?: number
 
   @Field(() => Boolean, { nullable: true })
   success!: boolean;
@@ -80,13 +83,13 @@ export class EventResolver {
     return charityLoader.load(event.charityId);
   }
 
-  @FieldResolver(() => Int, { nullable: true })
-  async voteStatus(
+  @FieldResolver(() => Boolean)
+  async likeStatus(
     @Root() event: Event,
     @Ctx() { eventLikeLoader, req }: MyContext
-  ) {
+  ): Promise<boolean> {
     if (!req.session.userId) {
-      return null;
+      return false;
     }
 
     const like = await eventLikeLoader.load({
@@ -94,7 +97,7 @@ export class EventResolver {
       userId: req.session.userId,
     });
 
-    return like ? 1 : null;
+    return like ? true : false;
   }
 
   @FieldResolver(() => AdminApproval, { nullable: true })
@@ -134,6 +137,17 @@ export class EventResolver {
     }
     // get list of users
     return userLoader.loadMany(evs.map((ev) => ev.userId));
+  }
+
+  @FieldResolver(() => Int)
+  async volunteerNumber(
+    @Root() event: Event
+  ): Promise<number> {
+    const evs = await EventResolver.approvedEventDataLoader.load(event.id);
+    if (!evs) {
+      return 0;
+    }
+    return evs.length;
   }
 
   @FieldResolver(() => [Task], { nullable: true })
@@ -186,12 +200,12 @@ export class EventResolver {
     return adids;
   }
 
-  @Mutation(() => LikeResponse)
+  @Mutation(() => EventLikeResponse)
   @UseMiddleware(isAuth)
   async likeEvent(
     @Arg("eventId", () => Int) eventId: number,
     @Ctx() { req }: MyContext
-  ): Promise<LikeResponse> {
+  ): Promise<EventLikeResponse> {
     const { userId } = req.session;
 
     const event = await Event.findOne({
@@ -214,16 +228,6 @@ export class EventResolver {
       await getConnection().transaction(async (tm) => {
         await tm.delete(Eventlike, { userId: userId, eventId: eventId });
 
-        // await tm.query(
-        //   `
-        //         update event
-        //         set "likeNumber" = "likeNumber" - 1
-        //         where id = $1
-        //         and "likeNumber">0
-        //     `,
-        //   [eventId]
-        // );
-
         if (event.likeNumber > 0) {
           event.likeNumber = event.likeNumber - 1;
         }
@@ -240,15 +244,6 @@ export class EventResolver {
           .values({ userId: userId, eventId: eventId })
           .execute();
 
-        // await tm.query(
-        //   `
-        //         update event
-        //         set "likeNumber" = "likeNumber" + 1
-        //         where id = $1
-        //     `,
-        //   [eventId]
-        // );
-
         event.likeNumber = event.likeNumber + 1;
         await event.save();
       });
@@ -256,116 +251,17 @@ export class EventResolver {
     return like
       ? {
           success: true,
-          voteStatus: false,
-          id: eventId,
-          likeNumber: event.likeNumber,
+          // voteStatus: false,
+          likeItem: event,
+          // likeNumber: event.likeNumber,
         }
       : {
           success: true,
-          voteStatus: true,
-          id: eventId,
-          likeNumber: event.likeNumber,
+          // voteStatus: true,
+          likeItem: event,
+          // likeNumber: event.likeNumber,
         };
   }
-
-  // @Query(() => PaginatedEvents)
-  // async events(
-  //   @Arg("limit", () => Int) limit: number,
-  //   @Arg("sortByLikes") sortByLikes: boolean,
-  //   @Arg("sortByUpcoming") sortByUpcoming: boolean,
-  //   @Arg("cursor", () => String, { nullable: true }) cursor: string | null
-  // ): Promise<PaginatedEvents> {
-  //   const realLimit = Math.min(50, limit);
-  //   const realLimitPlusOne = realLimit + 1;
-
-  //   const replacements: any[] = [realLimitPlusOne];
-
-  //   if (cursor) {
-  //     replacements.push(new Date(parseInt(cursor))); //cursor null at first
-  //   }
-
-  //   // actual query
-  //   const events = await getConnection().query(
-  //     `
-  //   select e.*
-  //   from event e
-  //   where e.auditstat = TRUE
-  //   ${cursor ? `and e."updatedAt" < $2` : ""}
-  //   order by
-  //       ${sortByUpcoming ? `e."dateStart" DESC,` : ""}
-  //       ${sortByLikes ? `e."likeNumber" DESC,` : ""}
-  //       e."dateStart" DESC
-  //   limit $1
-  //   `,
-  //     replacements
-  //   );
-
-  //   const tot = await getConnection()
-  //     .createQueryBuilder()
-  //     .select("COUNT(ev.*)", "count")
-  //     .from(Event, "ev")
-  //     .getRawOne<number>();
-
-  //   return {
-  //     items: events.slice(0, realLimit),
-  //     hasMore: events.length === realLimitPlusOne,
-  //     total: tot,
-  //   };
-  // }
-
-  // @Query(() => PaginatedEvents)
-  // async eventsByCategories(
-  //   @Arg("limit", () => Int) limit: number,
-  //   @Arg("sortByLikes") sortByLikes: boolean,
-  //   @Arg("sortByUpcoming") sortByUpcoming: boolean,
-  //   @Arg("categories", () => [Number]) categories: number[],
-  //   @Arg("cursor", () => String, { nullable: true }) cursor: string | null
-  // ): Promise<PaginatedEvents> {
-  //   const realLimit = Math.min(50, limit);
-  //   const realLimitPlusOne = realLimit + 1;
-
-  //   const replacements: any[] = [realLimitPlusOne];
-
-  //   const catcsv = categories
-  //     .reduce<string>((a, b) => a + b + `,`, ``)
-  //     .slice(0, -1);
-  //   replacements.push(catcsv);
-
-  //   if (cursor) {
-  //     replacements.push(new Date(parseInt(cursor))); //cursor null at first
-  //   }
-
-  //   // actual query
-  //   const events = await getConnection().query(
-  //     `
-  //     SELECT ev.* FROM (
-  //       SELECT DISTINCT char.*
-  //       FROM charitycategory cc
-  //       INNER JOIN
-  //       (SELECT id FROM unnest(string_to_array( $2, ',')::int[]) AS id
-  //       ) cat
-  //       ON cat.id = cc."categoryId"
-  //       FULL JOIN charity char ON char.id = cc."charityId"
-  //       WHERE cc.auditstat = TRUE
-  //     ) charities
-  //     inner join event ev on charities.id = ev."charityId"
-  //     where ev.auditstat = TRUE
-  //     ${cursor ? `and ev."updatedAt" < $3` : ""}
-  //     order by
-  //       ${sortByUpcoming ? `ev."dateStart" DESC,` : ""}
-  //       ${sortByLikes ? `ev."likeNumber" DESC,` : ""}
-  //       ev."dateStart" DESC
-  //     limit $1;
-  //     `,
-  //     replacements
-  //   );
-
-  //   return {
-  //     items: events.slice(0, realLimit),
-  //     hasMore: events.length === realLimitPlusOne,
-  //     total: events.length
-  //   };
-  // }
 
   @Query(() => PaginatedEvents)
   async searchEvents(
@@ -454,7 +350,7 @@ export class EventResolver {
 
   @Query(() => Event, { nullable: true })
   event(@Arg("id", () => Int) id: number): Promise<Event | undefined> {
-    return Event.findOne(id);
+    return Event.findOne({where: {id: id, auditstat: true}});
   }
 
   @Mutation(() => EventResponse)
@@ -505,7 +401,8 @@ export class EventResolver {
       description: input.description,
       dateStart: input.dateStart,
       dateEnd: input.dateEnd,
-      venue: input.venue ? input.venue : "",
+      venue: input.venue,
+      imageUrl: input.imageUrl,
       charityId: char,
       creatorId: req.session.userId,
     }).save();
@@ -595,6 +492,7 @@ export class EventResolver {
         dateStart: input.dateStart,
         dateEnd: input.dateEnd,
         venue: input.venue ? input.venue : ev.venue,
+        imageUrl: input.imageUrl ? input.imageUrl : ev.imageUrl
       })
       .where('id = :id and "charityId" = :charityId and auditstat=true', {
         id,
@@ -785,7 +683,7 @@ export class EventResolver {
       creatorId: req.session.userId,
     }).save();
 
-    const pel = await Posteventlink.create({
+    await Posteventlink.create({
       eventId: ev.id,
       eventName: ev.name,
       charityId: ev.charityId,
@@ -794,10 +692,7 @@ export class EventResolver {
 
     const epost: EPost = {
       post: post,
-      isEvent: true,
-      eventId: pel.eventId,
-      eventName: pel.eventName,
-      creatorStatus: true,
+      event: ev
     };
 
     return { success: true, epost: epost };

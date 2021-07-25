@@ -20,8 +20,8 @@ export class UserProfileUpdateInput {
   @Field()
   about: string
 
-  @Field(() => Genders)
-  gender: Genders
+  @Field(() => Genders, {nullable: true})
+  gender?: Genders
 
   @Field()
   firstName: string;
@@ -31,6 +31,9 @@ export class UserProfileUpdateInput {
 
   @Field(() => String, {nullable: true})
   telegramHandle?: string;
+
+  @Field(() => String, {nullable: true})
+  displayPicture?: string;
 
   @Field(() => [Int], {nullable: true})
   categories?: number[];

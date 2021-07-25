@@ -51,7 +51,7 @@ export const createUserVolunteeredEventsListLoader = () =>
       .from(Eventvolunteer, `ev`)
       .where(sqlquerystring)
       .andWhere(`ev.auditstat = true`)
-      .andWhere(`ev.adminapproval = ${AdminApproval.APPROVED}`)
+      .andWhere(`ev.adminapproval = '${AdminApproval.APPROVED}'`)
       .getRawMany<Eventvolunteer>();
 
     const evIdsToEv: Record<number, Eventvolunteer[]> = {};

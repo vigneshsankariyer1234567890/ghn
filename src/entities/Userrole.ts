@@ -25,6 +25,6 @@ export class Userrole extends BaseEntity {
 
     @Field(() => String)
     @UpdateDateColumn()
-    udpatedAt: Date;
+    updatedAt: Date;
 
 }

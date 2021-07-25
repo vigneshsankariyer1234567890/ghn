@@ -12,6 +12,7 @@ import {
 import { User } from "./User";
 import { Like } from "./Like";
 import { Posteventlink } from "./Posteventlink";
+import { Comment } from "./Comment";
 
 @ObjectType()
 @Entity()
@@ -20,9 +21,9 @@ export class Post extends BaseEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Field()
-  @Column()
-  title!: string;
+  // @Field()
+  // @Column()
+  // title!: string;
 
   @Field()
   @Column()
@@ -51,6 +52,9 @@ export class Post extends BaseEntity {
   @OneToMany(() => Posteventlink, pel => pel.post)
   posteventlinks: Posteventlink[]
 
+  @OneToMany(() => Comment, comm => comm.post)
+  comments: Comment[]
+
   @Field(() => Boolean)
   @Column({type: "boolean", default:true})
   auditstat!: boolean;
@@ -58,6 +62,10 @@ export class Post extends BaseEntity {
   @Field(() => Boolean)
   @Column({type: "boolean", default:false})
   isEvent!: boolean;
+
+  @Field(() => String, {nullable: true})
+  @Column({type: "text", nullable: true})
+  imageUrl?: string;
 
   @Field(() => String)
   @CreateDateColumn()

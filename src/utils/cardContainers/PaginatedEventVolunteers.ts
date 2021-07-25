@@ -15,10 +15,14 @@ export class EventVolunteerContainer {
   @Field(() => Int, {nullable: true})
   eventId?: number
 
-  constructor(user?: User, adminapproval?: AdminApproval, eventId?: number) {
+  @Field(() => String, {nullable: true})
+  updatedAt?: Date
+
+  constructor(user?: User, adminapproval?: AdminApproval, eventId?: number, updatedAt?: Date) {
     this.user = user;
     this.adminapproval = adminapproval
     this.eventId = eventId
+    this.updatedAt = updatedAt
   }
 }
 

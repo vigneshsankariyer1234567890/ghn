@@ -63,16 +63,21 @@ import {
   createUserCharityFollowsLoader,
 } from "./utils/dataloaders/createCharityFollowLoader";
 import { createCharityAdminRolesLoader } from "./utils/dataloaders/createCharityAdminRoleLoader";
-import { createUserFriendshipLoader, createUserFriendsLoader } from "./utils/dataloaders/createUserFriendLoader";
+import { createMutualFriendsLoader, createUserFriendshipLoader, createUserFriendsLoader } from "./utils/dataloaders/createUserFriendLoader";
 import { Userprofile } from "./entities/Userprofile";
 import { Charityprofile } from "./entities/Charityprofile";
+import { TelegramResolver } from "./resolvers/telegram";
+import { createUserPostsLoader } from "./utils/dataloaders/createUserPostsLoader";
+import { RecommenderResolver } from "./resolvers/recommender";
+import { Comment } from "./entities/Comment";
+import { createPostCommentsLoader } from "./utils/dataloaders/createPostCommentsLoader";
 
 const main = async () => {
   const conn = await createConnection({
     type: "postgres",
     url: process.env.DATABASE_URL,
     logging: true,
-    synchronize: true,
+    // synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
     entities: [
       Post,
@@ -93,22 +98,12 @@ const main = async () => {
       Charityfollow,
       Userfriend,
       Userprofile,
-      Charityprofile
+      Charityprofile,
+      Comment
     ],
   });
 
-  // await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
-  // await Charity.delete({});
-  // await conn.createQueryBuilder()
-  //           .update(Post)
-  //           .set({likeNumber: 0})
-  //           .where("id = :id", { id: 6})
-  //           .execute();
-  // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('ADMIN')`);
-  // await conn.createQueryRunner().query(`INSERT INTO "userrole" ("roleName") VALUES ('VOLUNTEER')`);
-  // console.log(await Userrole.find()); // remember that primary key generation starts from 1
-  // console.log(await Category.find());
-  // console.log(await Charityrolelink.find());
+  await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
 
   const app = express();
 
@@ -133,7 +128,7 @@ const main = async () => {
         disableTouch: true,
       }),
       cookie: {
-        maxAge: 1000 * 60 * 60 * 24 * 365, //1 year
+        maxAge: 1000 * 60 * 60 * 24 * 4, //4 days
         httpOnly: true,
         secure: __prod__,
         sameSite: __prod__ ? "none" : "lax",
@@ -157,6 +152,8 @@ const main = async () => {
         EventvolunteerResolver,
         TaskResolver,
         TaskVolunteerResolver,
+        TelegramResolver,
+        RecommenderResolver
       ],
       validate: false,
     }),
@@ -185,7 +182,10 @@ const main = async () => {
       userFriendshipLoader: createUserFriendshipLoader(),
       userVolunteeredEventsListLoader: createUserVolunteeredEventsListLoader(),
       userProfileLoader: createUserProfileLoader(),
-      charityProfileLoader: createCharityProfileLoader()
+      charityProfileLoader: createCharityProfileLoader(),
+      userPostsLoader: createUserPostsLoader(),
+      mutualFriendsLoader: createMutualFriendsLoader(),
+      postCommentsLoader: createPostCommentsLoader()
     }),
     playground: true,
     introspection: true,

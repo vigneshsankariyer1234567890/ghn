@@ -5,5 +5,9 @@ declare namespace NodeJS {
     PORT: string;
     SESSION_SECRET: string;
     CORS: string;
+    TELE_API_ID: string;
+    TELE_API_HASH: string;
+    TELE_SESSION_STR: string;
+    SMTP_PASSWORD: string;
   }
 }

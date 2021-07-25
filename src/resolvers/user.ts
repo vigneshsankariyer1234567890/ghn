@@ -14,13 +14,17 @@ import {
 import { MyContext } from "../types";
 import { User } from "../entities/User";
 import argon2 from "argon2";
-import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from "../constants";
+import {
+  COOKIE_NAME,
+  FORGET_PASSWORD_PREFIX,
+  VERIFY_USER_PREFIX,
+} from "../constants";
 import {
   UsernamePasswordInput,
   UserProfileUpdateInput,
 } from "../utils/UsernamePasswordInput";
 import { validateRegister } from "../utils/validateRegister";
-import { sendEmail } from "../utils/sendEmail";
+import { emailVerification, sendEmail } from "../utils/sendEmail";
 import { v4 } from "uuid";
 import { getConnection } from "typeorm";
 import { Category } from "../entities/Category";
@@ -42,6 +46,9 @@ import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
 import { PaginatedUsers } from "../utils/cardContainers/PaginatedCharitiesAndUsers";
 import { Userprofile } from "../entities/Userprofile";
 import { CategoryResolver } from "./category";
+import { checkTelegramUsername } from "../utils/telegramUtils/checkTelegramUsername";
+import { EPost } from "../utils/cardContainers/PostInput";
+// import validate from "deep-email-validator";
 
 @ObjectType()
 export class FieldError {
@@ -61,6 +68,9 @@ class UserResponse {
 
   @Field(() => [User], { nullable: true })
   userList?: User[];
+
+  @Field(() => Int, { nullable: true })
+  timeout?: number;
 
   @Field(() => Boolean)
   success: boolean;
@@ -229,6 +239,67 @@ export class UserResolver {
     return true;
   }
 
+  @FieldResolver(() => [EPost], { nullable: true })
+  async posts(
+    @Root() user: User,
+    @Ctx() { userPostsLoader }: MyContext
+  ): Promise<EPost[] | null> {
+    const posts = await userPostsLoader.load(user.id);
+    return posts;
+  }
+
+  @FieldResolver(() => Int)
+  async friendNumber(
+    @Root() user: User,
+    @Ctx() { userFriendsLoader }: MyContext
+  ): Promise<number> {
+    const friends = await userFriendsLoader.load(user.id);
+    if (!friends) {
+      return 0;
+    }
+    return friends.length;
+  }
+
+  @FieldResolver(() => Int)
+  async followedCharitiesNumber(
+    @Root() user: User,
+    @Ctx() { userCharityFollowsLoader }: MyContext
+  ): Promise<number> {
+    const follows = await userCharityFollowsLoader.load(user.id);
+    if (!follows) {
+      return 0;
+    }
+    return follows.length;
+  }
+
+  @FieldResolver(() => [User])
+  async mutualFriends(
+    @Root() user: User,
+    @Ctx() { userLoader, mutualFriendsLoader, req }: MyContext
+  ): Promise<(User | Error)[]> {
+    if (!req.session.userId) {
+      return [];
+    }
+
+    if (req.session.userId === user.id) {
+      return [];
+    }
+
+    const uids = await mutualFriendsLoader.load({
+      user1Id: user.id,
+      user2Id: req.session.userId,
+    });
+
+    if (!uids) {
+      return [];
+    }
+
+    if (uids.length === 0) {
+      return [];
+    }
+    return await userLoader.loadMany(uids);
+  }
+
   @Query(() => User, { nullable: true })
   me(@Ctx() { req }: MyContext) {
     // you are not logged in
@@ -239,12 +310,19 @@ export class UserResolver {
     return User.findOne(req.session.userId);
   }
 
+  @Query(() => User, { nullable: true })
+  user(@Arg("id") id: number): Promise<User | undefined> {
+    // you are not logged in
+
+    return User.findOne(id);
+  }
+
   @Mutation(() => UserResponse)
   async register(
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { req }: MyContext
+    @Ctx() { redis }: MyContext
   ): Promise<UserResponse> {
-    const errors = validateRegister(options);
+    const errors = await validateRegister(options);
     if (errors) {
       return { success: false, errors };
     }
@@ -274,8 +352,12 @@ export class UserResolver {
           errors: [
             {
               field: "username",
-              message: "username already taken",
+              message: "Either username or email already taken",
             },
+            {
+              field: "email",
+              message: "Either username or email already taken"
+            }
           ],
         };
       }
@@ -284,9 +366,94 @@ export class UserResolver {
     // store user id session
     // this will set a cookie on the user
     // keep them logged in
-    req.session.userId = user.id;
+
+    const token = v4();
+
+    await redis.set(
+      VERIFY_USER_PREFIX + token,
+      user.id,
+      "ex",
+      1000 * 60 * 60 * 24 * 3
+    ); // 3 days
+
+    try {
+      await sendEmail(
+        options.email,
+        ` Hey there! You've just signed up for Givehub! Welcome on board!.
+        <a href="https://givehub.vercel.app/verify/${token}">Click on this to verify yourself!</a>
+        `,
+        "Givehub User Verification"
+      );
+    } catch (err) {
+      console.log(err);
+      await getConnection()
+        .createQueryBuilder()
+        .delete()
+        .from(User)
+        .where("id = :id", { id: user.id })
+        .execute();
+      await redis.del(VERIFY_USER_PREFIX + token);
+      return {
+        success: false,
+        errors: [{ field: "email", message: "this is an invalid email" }],
+      };
+    }
+    // req.session.userId = user.id;
 
     return { success: true, user };
+  }
+
+  @Mutation(() => UserResponse)
+  async verifyUser(
+    @Arg("token") token: string,
+    @Ctx() { redis, req }: MyContext
+  ): Promise<UserResponse> {
+    const key = VERIFY_USER_PREFIX + token;
+    const userId = await redis.get(key);
+    if (!userId) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "token",
+            message: "token expired",
+          },
+        ],
+      };
+    }
+
+    const userIdNum = parseInt(userId);
+    const user = await User.findOne(userIdNum);
+
+    if (!user) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "token",
+            message: "user no longer exists",
+          },
+        ],
+      };
+    }
+
+    user.verified = true;
+    await user.save();
+
+    await redis.del(key);
+
+    // log in user after change password
+    req.session.userId = user.id;
+
+    const charityAdmins = await Charityrolelink.find({
+      where: { auditstat: true, userId: user.id },
+    });
+
+    if (charityAdmins.length > 0) {
+      req.session.charityAdminIds = charityAdmins.map((ca) => ca.charityId);
+    }
+
+    return { success: true, user: user };
   }
 
   @Mutation(() => UserResponse)
@@ -374,7 +541,7 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async updateUserProfile(
     @Arg("options") options: UserProfileUpdateInput,
-    @Ctx() { req }: MyContext
+    @Ctx() { req, redis }: MyContext
   ): Promise<UserResponse> {
     if (!req.session.userId) {
       return {
@@ -394,17 +561,72 @@ export class UserResolver {
       };
     }
 
+    if (emailVerification.test(options.email)) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "email",
+            message: "Please key in a valid email.",
+          },
+        ],
+      };
+    }
+
+    if (options.telegramHandle) {
+      const res = checkTelegramUsername(options.telegramHandle);
+      if (!res.success) {
+        return {
+          success: res.success,
+          errors: res.errors,
+          timeout: res.timeout,
+        };
+      }
+    }
+
     if (options.categories) {
-      const resp = await CategoryResolver.updateUserCategories({categories: options.categories}, user.id);
+      const resp = await CategoryResolver.updateUserCategories(
+        { categories: options.categories },
+        user.id
+      );
       if (!resp.success) {
         return {
           success: false,
-          errors: resp.errors
-        }
+          errors: resp.errors,
+        };
       }
     }
 
     if (options.email !== user.email) {
+      if (!emailVerification.test(options.email)) {
+        return {
+          success: false,
+          errors: [{ field: "email", message: "That email is not valid." }],
+        };
+      }
+      const token = v4();
+      await redis.set(
+        VERIFY_USER_PREFIX + token,
+        user.id,
+        "ex",
+        1000 * 60 * 60 * 24 * 3
+      ); // 3 days
+
+      try {
+        await sendEmail(
+          options.email,
+          `Hi ${user.username}, \n You have just requested for a change in email.
+          <a href="https://givehub.vercel.app/verify/${token}">Click on this to verify yourself!</a>
+          `,
+          `Change in Givehub email`
+        );
+      } catch (err) {
+        await redis.del(VERIFY_USER_PREFIX + token);
+        return {
+          success: false,
+          errors: [{ field: "email", message: "That email is not valid." }],
+        };
+      }
       user.email = options.email;
     }
 
@@ -422,9 +644,60 @@ export class UserResolver {
         gender: options.gender,
         firstName: options.firstName,
         lastName: options.lastName,
-        telegramHandle: options.telegramHandle ? options.telegramHandle : null,
+        telegramHandle: options.telegramHandle,
+        displayPicture: options.displayPicture,
       }).save();
     } else {
+      const ogtele = userprof.telegramHandle;
+      const inputtele = options.telegramHandle;
+      const dp = !userprof.displayPicture;
+      const newdp = !options.displayPicture;
+      if (!ogtele) {
+        await getConnection().transaction(async (tm) => {
+          await tm
+            .createQueryBuilder()
+            .update(Userprofile)
+            .set({
+              about: options.about,
+              gender: options.gender,
+              firstName: options.firstName,
+              lastName: options.lastName,
+              telegramHandle: inputtele,
+              displayPicture: dp
+                ? options.displayPicture
+                : newdp
+                ? userprof.displayPicture
+                : options.displayPicture,
+            })
+            .where(`"userId" = :uid`, { uid: user.id })
+            .execute();
+        });
+        await user.save();
+        return { success: true, user: user };
+      }
+      if (!inputtele) {
+        await getConnection().transaction(async (tm) => {
+          await tm
+            .createQueryBuilder()
+            .update(Userprofile)
+            .set({
+              about: options.about,
+              gender: options.gender,
+              firstName: options.firstName,
+              lastName: options.lastName,
+              displayPicture: dp
+                ? options.displayPicture
+                : newdp
+                ? userprof.displayPicture
+                : options.displayPicture,
+            })
+            .where(`"userId" = :uid`, { uid: user.id })
+            .execute();
+        });
+        await user.save();
+        return { success: true, user: user };
+      }
+      // update User profile first
       await getConnection().transaction(async (tm) => {
         await tm
           .createQueryBuilder()
@@ -434,13 +707,31 @@ export class UserResolver {
             gender: options.gender,
             firstName: options.firstName,
             lastName: options.lastName,
-            telegramHandle: options.telegramHandle
-              ? options.telegramHandle
-              : null,
+            telegramHandle: inputtele,
+            displayPicture: dp
+              ? options.displayPicture
+              : newdp
+              ? userprof.displayPicture
+              : options.displayPicture,
           })
           .where(`"userId" = :uid`, { uid: user.id })
           .execute();
       });
+      // update joined telegram to false and set date as null
+      // since new telegram handle added
+      if (inputtele !== ogtele) {
+        await getConnection().transaction(async (tm) => {
+          await tm
+            .createQueryBuilder()
+            .update(Eventvolunteer)
+            .set({
+              joinedTelegram: false,
+              joinedTelegramDate: undefined,
+            })
+            .where(`"userId" = :uid`, { uid: user.id })
+            .execute();
+        });
+      }
     }
 
     await user.save();
@@ -538,10 +829,17 @@ export class UserResolver {
       1000 * 60 * 60 * 24 * 3
     ); // 3 days
 
-    await sendEmail(
-      email,
-      `<a href="https://givehub.vercel.app/change-password/${token}">reset password</a>`
-    );
+    try {
+      await sendEmail(
+        email,
+        ` Hey there! You just requested to change your password at Givehub.
+        <a href="https://givehub.vercel.app/change-password/${token}">Click on this to reset your password!</a>
+        `,
+        "Givehub password change request."
+      );
+    } catch (err) {
+      return true;
+    }
 
     return true;
   }
@@ -618,11 +916,12 @@ export class UserResolver {
       .select(`uf.*`)
       .from(Userfriend, `uf`)
       .where(
-        `uf."user1Id" = ${req.session.userId} or uf."user2Id" = ${req.session.userId}`
+        `(uf."user1Id" = ${req.session.userId} and uf.friendreqstatus = 'user2_req') 
+        or (uf."user2Id" = ${req.session.userId} and uf.friendreqstatus = 'user1_req')`
       )
-      .andWhere(
-        `uf.friendreqstatus = 'user1_req' or uf.friendreqstatus = 'user2_req'`
-      )
+      // .andWhere(
+      //   `uf.friendreqstatus = 'user1_req' or uf.friendreqstatus = 'user2_req'`
+      // )
       .getRawMany<Userfriend>();
 
     const uids = friends.map((f) =>
@@ -672,15 +971,14 @@ export class UserResolver {
     });
 
     if (userfriend) {
-      if (userfriend.friendreqstatus === FriendRequestStatus.ACCEPTED) {
+      if (
+        userfriend.friendreqstatus === FriendRequestStatus.ACCEPTED ||
+        userfriend.friendreqstatus === FriendRequestStatus.USER1_REQ ||
+        userfriend.friendreqstatus === FriendRequestStatus.USER2_REQ
+      ) {
+        await userfriend.remove();
         return {
-          success: false,
-          errors: [
-            {
-              field: "Friend",
-              message: "You are already friends.",
-            },
-          ],
+          success: true,
         };
       }
 
@@ -693,22 +991,7 @@ export class UserResolver {
           errors: [
             {
               field: "Friend",
-              message: "You have either been blocked or have blocked the user.",
-            },
-          ],
-        };
-      }
-
-      if (
-        userfriend.friendreqstatus === FriendRequestStatus.USER1_REQ ||
-        userfriend.friendreqstatus === FriendRequestStatus.USER2_REQ
-      ) {
-        return {
-          success: false,
-          errors: [
-            {
-              field: "Friend",
-              message: "There is already a pending friend request.",
+              message: "Unable to send a friend request.",
             },
           ],
         };
@@ -741,6 +1024,7 @@ export class UserResolver {
   @UseMiddleware(isAuth)
   async acceptFriendRequest(
     @Arg("userId", () => Number) userId: number,
+    @Arg("accept") accept: boolean,
     @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
     if (!req.session.userId) {
@@ -839,7 +1123,9 @@ export class UserResolver {
       };
     }
 
-    userfriend.friendreqstatus = FriendRequestStatus.ACCEPTED;
+    userfriend.friendreqstatus = accept
+      ? FriendRequestStatus.ACCEPTED
+      : FriendRequestStatus.REJECTED;
     await userfriend.save();
 
     return { success: true };
@@ -928,13 +1214,36 @@ export class UserResolver {
     // actual query
     const users = await getConnection().query(
       `
-      SELECT * FROM "user" us
-      ${input ? `where us."username" ILIKE '` + input + `%'` : ""}
+      SELECT us.* FROM "user" us
+      LEFT OUTER JOIN userprofile usp on us.id = usp."userId"
+      ${
+        input
+          ? `where us."username" ILIKE '` +
+            input +
+            `%' or usp."firstName" ILIKE '` +
+            input +
+            `%' or usp."lastName" ILIKE '` +
+            input +
+            `%'`
+          : ""
+      }
       ${
         cursor
           ? input
-            ? `and us."username" > '` + cursor + `'`
-            : `where us."username" > '` + cursor + `'`
+            ? `and (us."username" > '` +
+              cursor +
+              `' or usp."firstName" > '` +
+              cursor +
+              `' or usp."lastName" > '` +
+              cursor +
+              `')`
+            : `where (us."username" > '` +
+              cursor +
+              `' or usp."firstName" > '` +
+              cursor +
+              `' or usp."lastName" > '` +
+              cursor +
+              `')`
           : ""
       }
       order by us."username" ASC
@@ -945,8 +1254,19 @@ export class UserResolver {
     const tot = await getConnection().query(
       `
       select COUNT(*) as "count" from (
-        SELECT * FROM "user" us
-        ${input ? `where us."username" ILIKE '` + input + `%'` : ""}
+        SELECT us.* FROM "user" us
+        LEFT OUTER JOIN userprofile usp on us.id = usp."userId"
+        ${
+          input
+            ? `where us."username" ILIKE '` +
+              input +
+              `%' or usp."firstName" ILIKE '` +
+              input +
+              `%' or usp."lastName" ILIKE '` +
+              input +
+              `%'`
+            : ""
+        }
       ) c
       `
     );

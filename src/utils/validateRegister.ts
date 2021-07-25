@@ -1,20 +1,24 @@
 import { UsernamePasswordInput } from "./UsernamePasswordInput";
+// import validate from "deep-email-validator";
+import {emailVerification} from "./sendEmail"
 
-export const validateRegister = (options: UsernamePasswordInput) => {
-    if (!options.email.includes("@")) {
+
+
+export const validateRegister = async (options: UsernamePasswordInput) => {
+    if (!emailVerification.test(options.email)) {
       return [
-        {
-          field: "email",
-          message: "invalid email",
-        },
-      ];
+            { 
+              field: "email",
+              message: "Please key in a valid email.",
+            },
+          ];
     }
   
-    if (options.username.length <= 2) {
+    if (options.username.length <= 8) {
       return [
         {
           field: "username",
-          message: "length must be greater than 2",
+          message: "length must be greater than 8",
         },
       ];
     }
@@ -28,11 +32,11 @@ export const validateRegister = (options: UsernamePasswordInput) => {
       ];
     }
   
-    if (options.password.length <= 2) {
+    if (options.password.length <= 8) {
       return [
         {
           field: "password",
-          message: "length must be greater than 2",
+          message: "length must be greater than 8",
         },
       ];
     }

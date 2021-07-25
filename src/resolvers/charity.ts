@@ -33,6 +33,7 @@ import {
 } from "../utils/CharityDataInput";
 import { Charityprofile } from "../entities/Charityprofile";
 import { CategoryResolver } from "./category";
+import { Userprofile } from "../entities/Userprofile";
 
 @ObjectType()
 class UENResponse {
@@ -89,20 +90,20 @@ export class CharityResolver {
     return await categoryLoader.loadMany(catids);
   }
 
-  @FieldResolver(() => Int, { nullable: true })
+  @FieldResolver(() => Boolean)
   async followStatus(
     @Root() charity: Charity,
     @Ctx() { req, singleCharityFollowLoader }: MyContext
-  ) {
+  ): Promise<boolean> {
     if (!req.session.userId) {
-      return null;
+      return false;
     }
     const follow = await singleCharityFollowLoader.load({
       charityId: charity.id,
       userId: req.session.userId,
     });
 
-    return follow ? 1 : null;
+    return follow ? true : false;
   }
 
   @FieldResolver(() => [User])
@@ -169,11 +170,14 @@ export class CharityResolver {
   async checkUENNumber(
     @Arg("UENNumber", () => String) UENNumber: string
   ): Promise<UENResponse> {
+    
+    const charityTypes: ReadonlyArray<string> = ["MQ", "MM", "CC", "CS", "MB", "MH", "SS", "PA", "PB"];
+
     if (UENNumber === "") {
       return {
         errors: [
           {
-            field: "UEN Number",
+            field: "uen",
             message: "Please provide a UEN Number!",
           },
         ],
@@ -185,7 +189,7 @@ export class CharityResolver {
       return {
         errors: [
           {
-            field: "UEN Number",
+            field: "uen",
             message:
               "UEN Number is not valid; please provide a valid UEN Number!",
           },
@@ -200,7 +204,7 @@ export class CharityResolver {
       return {
         errors: [
           {
-            field: "UEN Number",
+            field: "uen",
             message: "A charity with this UEN Number already exists.",
           },
         ],
@@ -218,14 +222,14 @@ export class CharityResolver {
       .then(
         (res) =>
           res.data.result.records.length === 1 &&
-          res.data.result.records[0].entity_type === "CC"
+          charityTypes.reduce((a,b) => a || b === res.data.result.records[0].entity_type, false)
       );
 
     if (!res) {
       return {
         errors: [
           {
-            field: "UEN Number",
+            field: "uen",
             message: "No such organisation exists",
           },
         ],
@@ -279,36 +283,56 @@ export class CharityResolver {
       return {
         success: false,
         errors: [
-          { field: "UEN Error", message: "UEN Validation was unsuccessful." },
+          { field: "uen", message: "UEN Validation was unsuccessful." },
         ],
       };
     }
 
     const uendata: UENData = uenresp.uendata;
 
-    if (uendata.entity_name !== options.name) {
-      return {
-        success: false,
-        errors: [
-          {
-            field: "Charity Name",
-            message: "Charity Name does not match entity registered name.",
-          },
-        ],
-      };
-    }
+    // if (uendata.entity_name !== options.name) {
+    //   return {
+    //     success: false,
+    //     errors: [
+    //       {
+    //         field: "Charity Name",
+    //         message: "Charity Name does not match entity registered name.",
+    //       },
+    //     ],
+    //   };
+    // }
 
-    if (uendata.reg_postal_code !== options.postalcode) {
+    if (uendata.reg_postal_code !== options.postalCode) {
       return {
         success: false,
         errors: [
           {
-            field: "Charity Address",
+            field: "postalcode",
             message:
               "The postal code given does not match registered postal code.",
           },
         ],
       };
+    }
+
+    const up = await Userprofile.findOne({where: { userId: req.session.id }});
+
+    if (!up) {
+      return {
+        errors: [{ field: "User", message: 
+          `Your user details have not been updated. 
+          Please update your details before proceeding.` }],
+        success: false,
+      }
+    }
+
+    if (!up.telegramHandle) {
+      return {
+        errors: [{ field: "User", message: 
+          `Your Telegram handle needs to be updated. 
+          Please update your Telegram handle before proceeding.` }],
+        success: false,
+      }
     }
 
     let charity;
@@ -322,7 +346,7 @@ export class CharityResolver {
           name: options.name,
           uen: options.uen,
           physicalAddress: options.physicalAddress,
-          postalcode: options.postalcode,
+          postalCode: options.postalCode,
           charitycreatorId: req.session.userId,
         })
         .returning("*")
@@ -443,10 +467,10 @@ export class CharityResolver {
       charity.physicalAddress !== options.physicalAddress
         ? options.physicalAddress
         : charity.physicalAddress;
-    charity.postalcode =
-      charity.postalcode !== options.postalcode
-        ? options.postalcode
-        : charity.postalcode;
+    charity.postalCode =
+      charity.postalCode !== options.postalCode
+        ? options.postalCode
+        : charity.postalCode;
 
     const charityprofs = await getConnection()
       .createQueryBuilder()
@@ -459,16 +483,24 @@ export class CharityResolver {
       await Charityprofile.create({
         charity: charity,
         about: options.about,
-        links: options.links ? options.links : null,
+        links: options.links,
+        email: options.email,
+        contactNumber: options.contactNumber,
+        displayPicture: options.displayPicture
       }).save();
     } else {
+      const dp = !(charityprofs.displayPicture)
+      const newdp = !(options.displayPicture)
       await getConnection().transaction(async (tm) => {
         await tm
           .createQueryBuilder()
           .update(Charityprofile)
           .set({
             about: options.about,
-            links: options.links ? options.links : null,
+            links: options.links,
+            email: options.email,
+            contactNumber: options.contactNumber,
+            displayPicture: dp ? options.displayPicture : newdp ? charityprofs.displayPicture : options.displayPicture
           })
           .where(`"charityId" = :cid`, { cid: charity.id })
           .execute();

@@ -60,6 +60,12 @@ export class Eventvolunteer extends BaseEntity {
   @Column({ type: "boolean", default: false })
   volunteeringCompleted!: boolean;
 
+  @Column({ type: "boolean", default: false})
+  joinedTelegram!: boolean
+
+  @Column({type: "timestamptz", nullable: true})
+  joinedTelegramDate?: Date
+
   @Field(() => String)
   @CreateDateColumn()
   createdAt: Date;

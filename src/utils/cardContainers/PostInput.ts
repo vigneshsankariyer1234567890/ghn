@@ -1,20 +1,20 @@
-import {
-  Field,
-  InputType,
-  ObjectType
-} from "type-graphql";
+import { Field, InputType, ObjectType } from "type-graphql";
 import { getConnection } from "typeorm";
+import { Comment } from "../../entities/Comment";
+import { Event } from "../../entities/Event";
 import { Post } from "../../entities/Post";
 import { Posteventlink } from "../../entities/Posteventlink";
+import { FieldError } from "../../resolvers/user";
 import PaginatedResponse from "./PaginatedResponse";
-
 
 @InputType()
 export class PostInput {
-  @Field()
-  title: string;
+  // @Field()
+  // title: string;
   @Field()
   text: string;
+  @Field(() => String, {nullable: true})
+  imageUrl?: string;
 }
 
 @ObjectType()
@@ -22,66 +22,85 @@ export class EPost {
   @Field(() => Post)
   post: Post;
 
-  @Field(() =>  Number, {nullable: true})
-  eventId?: number;
+  @Field(() => Event, { nullable: true })
+  event?: Event;
 
-  @Field(() => String, {nullable: true})
-  eventName?: string;
-
-  @Field(() => Boolean)
-  isEvent: boolean
-
-  @Field(() => Boolean)
-  creatorStatus: boolean
-
-  constructor(post: Post, isEvent: boolean, eventId?: number, eventName?: string) {
+  constructor(post: Post, event?: Event) {
     this.post = post;
-    this.isEvent = isEvent;
-    this.eventId = eventId;
-    this.eventName = eventName;
+    this.event = event;
   }
 }
 
 @ObjectType()
+export class PaginatedComments extends PaginatedResponse(Comment) {
+  @Field()
+  success: boolean
+
+  @Field(() => [FieldError], {nullable: true})
+  errors?: FieldError[]
+}
+
+@ObjectType()
 export class PaginatedPosts extends PaginatedResponse(EPost) {
-  public static async convertPostsToEPosts(postarr: Post[], viewerId?: number): Promise<EPost[]> {
-    
+
+  public static async convertPostsToEPosts(postarr: Post[]): Promise<EPost[]> {
     if (postarr.length === 0) {
       return [];
     }
 
-    const pids = postarr.map(p => p.id);
-
-    const pidToEventInfo: Record<number, {eventId?: number, eventName?: string}> = {};
+    const pids = postarr.map((p) => p.id);
 
     const result = await getConnection()
       .createQueryBuilder()
-      .select('pel."postId"', "postid")
-      .addSelect('po."isEvent"')
+      .select('pel."postId"')
       .addSelect('pel."eventId"')
-      .addSelect('pel."eventName"')
       .from(Post, "po")
-      .leftJoin(Posteventlink, "pel", 'pel."postId" = po.id')
-      .where('po.id IN (:...ids)', {ids: pids})
-      .getRawMany<{postid: number, isEvent: boolean, eventId?: number, eventName?: string}>();
+      .innerJoin(Posteventlink, "pel", 'pel."postId" = po.id')
+      .where("po.id IN (:...ids)", { ids: pids })
+      .getRawMany<{ postId: number; eventId: number }>();
 
-    result.forEach((elem) => {pidToEventInfo[elem.postid] = 
-      {
-        eventId: elem.isEvent ? elem.eventId : undefined,
-        eventName: elem.isEvent ? elem.eventName: undefined
-      }
+    const eventIds: number[] = [];
+
+    result.forEach((a) => {
+      eventIds.push(a.eventId);
     });
 
-    return postarr.map<EPost>( p => { 
-      return {
-        post: p, 
-        isEvent: p.isEvent, 
-        eventId: p.isEvent ? pidToEventInfo[p.id].eventId : undefined,
-        eventName: p.isEvent ? pidToEventInfo[p.id].eventName : undefined,
-        creatorStatus: !viewerId ? false : p.creatorId === viewerId
+    if (eventIds.length === 0) {
+      return postarr.map(p => new EPost(p));
+    }
+
+    const events = await getConnection()
+      .createQueryBuilder()
+      .select(`ev.*`)
+      .from(Event, `ev`)
+      .where(`ev.id in (:...eids)`, {eids: eventIds})
+      .getRawMany<Event>();
+
+    const eposts = postarr.map((po) => {
+      const filtered = result.filter((r) => r.postId === po.id);
+      if (filtered.length === 0) {
+        return new EPost(po);
       }
-    })
+      const f = filtered[0];
+      const filteredEvents = events.filter((e) => e.id === f.eventId);
+      if (filteredEvents.length === 0) {
+        return new EPost(po);
+      }
+      return new EPost(po, filteredEvents[0]);
+    });
+
+    return eposts;
   }
 }
 
+@ObjectType()
+export class PostResponse {
+  @Field(() => EPost)
+  epost?: EPost
 
+  @Field()
+  success: boolean
+
+  @Field(() => [FieldError], {nullable: true})
+  errors?: FieldError[]
+}

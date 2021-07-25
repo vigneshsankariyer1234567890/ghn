@@ -39,5 +39,5 @@ export class Charityfollow extends BaseEntity {
 
   @Field(() => String)
   @UpdateDateColumn()
-  udpatedAt: Date;
+  updatedAt: Date;
 }
