@@ -1,18 +1,17 @@
 import { UsernamePasswordInput } from "./UsernamePasswordInput";
-import validate from "deep-email-validator";
+// import validate from "deep-email-validator";
+import {emailVerification} from "./sendEmail"
 
 
 
 export const validateRegister = async (options: UsernamePasswordInput) => {
-    const valid = (await validate(options.email)).valid;
-
-    if (!valid) {
+    if (!emailVerification.test(options.email)) {
       return [
-        { 
-          field: "email",
-          message: "Please key in a valid email.",
-        },
-      ];
+            { 
+              field: "email",
+              message: "Please key in a valid email.",
+            },
+          ];
     }
   
     if (options.username.length <= 8) {

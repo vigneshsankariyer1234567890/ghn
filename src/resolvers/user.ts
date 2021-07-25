@@ -14,13 +14,17 @@ import {
 import { MyContext } from "../types";
 import { User } from "../entities/User";
 import argon2 from "argon2";
-import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from "../constants";
+import {
+  COOKIE_NAME,
+  FORGET_PASSWORD_PREFIX,
+  VERIFY_USER_PREFIX,
+} from "../constants";
 import {
   UsernamePasswordInput,
   UserProfileUpdateInput,
 } from "../utils/UsernamePasswordInput";
 import { validateRegister } from "../utils/validateRegister";
-import { sendEmail } from "../utils/sendEmail";
+import { emailVerification, sendEmail } from "../utils/sendEmail";
 import { v4 } from "uuid";
 import { getConnection } from "typeorm";
 import { Category } from "../entities/Category";
@@ -44,7 +48,7 @@ import { Userprofile } from "../entities/Userprofile";
 import { CategoryResolver } from "./category";
 import { checkTelegramUsername } from "../utils/telegramUtils/checkTelegramUsername";
 import { EPost } from "../utils/cardContainers/PostInput";
-import validate from "deep-email-validator";
+// import validate from "deep-email-validator";
 
 @ObjectType()
 export class FieldError {
@@ -316,7 +320,7 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async register(
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { req }: MyContext
+    @Ctx() { req, redis }: MyContext
   ): Promise<UserResponse> {
     const errors = await validateRegister(options);
     if (errors) {
@@ -358,9 +362,94 @@ export class UserResolver {
     // store user id session
     // this will set a cookie on the user
     // keep them logged in
+
+    const token = v4();
+
+    await redis.set(
+      VERIFY_USER_PREFIX + token,
+      user.id,
+      "ex",
+      1000 * 60 * 60 * 24 * 3
+    ); // 3 days
+
+    try {
+      await sendEmail(
+        options.email,
+        ` Hey there! You've just signed up for Givehub! Welcome on board!.
+        <a href="https://givehub.vercel.app/verify/${token}">Click on this to verify yourself!</a>
+        `,
+        "Givehub User Verification"
+      );
+    } catch (err) {
+      console.log(err);
+      await getConnection()
+        .createQueryBuilder()
+        .delete()
+        .from(User)
+        .where("id = :id", { id: user.id })
+        .execute();
+      await redis.del(VERIFY_USER_PREFIX + token);
+      return {
+        success: false,
+        errors: [{ field: "email", message: "this is an invalid email" }],
+      };
+    }
     req.session.userId = user.id;
 
     return { success: true, user };
+  }
+
+  @Mutation(() => UserResponse)
+  async verifyUser(
+    @Arg("token") token: string,
+    @Ctx() { redis, req }: MyContext
+  ): Promise<UserResponse> {
+    const key = VERIFY_USER_PREFIX + token;
+    const userId = await redis.get(key);
+    if (!userId) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "token",
+            message: "token expired",
+          },
+        ],
+      };
+    }
+
+    const userIdNum = parseInt(userId);
+    const user = await User.findOne(userIdNum);
+
+    if (!user) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "token",
+            message: "user no longer exists",
+          },
+        ],
+      };
+    }
+
+    user.verified = true;
+    await user.save();
+
+    await redis.del(key);
+
+    // log in user after change password
+    req.session.userId = user.id;
+
+    const charityAdmins = await Charityrolelink.find({
+      where: { auditstat: true, userId: user.id },
+    });
+
+    if (charityAdmins.length > 0) {
+      req.session.charityAdminIds = charityAdmins.map((ca) => ca.charityId);
+    }
+
+    return { success: true, user: user };
   }
 
   @Mutation(() => UserResponse)
@@ -448,7 +537,7 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async updateUserProfile(
     @Arg("options") options: UserProfileUpdateInput,
-    @Ctx() { req }: MyContext
+    @Ctx() { req, redis }: MyContext
   ): Promise<UserResponse> {
     if (!req.session.userId) {
       return {
@@ -468,9 +557,7 @@ export class UserResolver {
       };
     }
 
-    const valid = (await validate(options.email)).valid;
-
-    if (!valid) {
+    if (emailVerification.test(options.email)) {
       return {
         success: false,
         errors: [
@@ -507,6 +594,35 @@ export class UserResolver {
     }
 
     if (options.email !== user.email) {
+      if (!emailVerification.test(options.email)) {
+        return {
+          success: false,
+          errors: [{ field: "email", message: "That email is not valid." }],
+        };
+      }
+      const token = v4();
+      await redis.set(
+        VERIFY_USER_PREFIX + token,
+        user.id,
+        "ex",
+        1000 * 60 * 60 * 24 * 3
+      ); // 3 days
+
+      try {
+        await sendEmail(
+          options.email,
+          `Hi ${user.username}, \n You have just requested for a change in email.
+          <a href="https://givehub.vercel.app/verify/${token}">Click on this to verify yourself!</a>
+          `,
+          `Change in Givehub email`
+        );
+      } catch (err) {
+        await redis.del(VERIFY_USER_PREFIX + token);
+        return {
+          success: false,
+          errors: [{ field: "email", message: "That email is not valid." }],
+        };
+      }
       user.email = options.email;
     }
 
@@ -709,13 +825,17 @@ export class UserResolver {
       1000 * 60 * 60 * 24 * 3
     ); // 3 days
 
-    await sendEmail(
-      email,
-      ` Hey there! You just requested to change your password at Givehub.
-      <a href="https://givehub.vercel.app/change-password/${token}">Click on this to reset your password!</a>
-      `,
-      "Givehub password change request."
-    );
+    try {
+      await sendEmail(
+        email,
+        ` Hey there! You just requested to change your password at Givehub.
+        <a href="https://givehub.vercel.app/change-password/${token}">Click on this to reset your password!</a>
+        `,
+        "Givehub password change request."
+      );
+    } catch (err) {
+      return true;
+    }
 
     return true;
   }
@@ -1105,7 +1225,7 @@ export class UserResolver {
       }
       ${
         cursor
-          ? input 
+          ? input
             ? `and (us."username" > '` +
               cursor +
               `' or usp."firstName" > '` +

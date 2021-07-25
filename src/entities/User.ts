@@ -83,6 +83,10 @@ export class User extends BaseEntity {
   @OneToOne(() => Comment, comm => comm.author)
   comments: Comment
 
+  @Field()
+  @Column({type: "boolean", default:false})
+  verified: boolean
+
   @Field(() => String)
   @CreateDateColumn()
   createdAt: Date;
