@@ -185,18 +185,18 @@ export class CharityResolver {
       };
     }
 
-    if (UENNumber.length < 9 || UENNumber.length > 10) {
-      return {
-        errors: [
-          {
-            field: "uen",
-            message:
-              "UEN Number is not valid; please provide a valid UEN Number!",
-          },
-        ],
-        success: false,
-      };
-    }
+    // if (UENNumber.length < 9 || UENNumber.length > 10) {
+    //   return {
+    //     errors: [
+    //       {
+    //         field: "uen",
+    //         message:
+    //           "UEN Number is not valid; please provide a valid UEN Number!",
+    //       },
+    //     ],
+    //     success: false,
+    //   };
+    // }
 
     const check = await Charity.findOne({ where: { uen: UENNumber } });
 

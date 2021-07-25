@@ -561,7 +561,7 @@ export class UserResolver {
       };
     }
 
-    if (emailVerification.test(options.email)) {
+    if (!emailVerification.test(options.email)) {
       return {
         success: false,
         errors: [

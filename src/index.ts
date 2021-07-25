@@ -71,8 +71,11 @@ import { createUserPostsLoader } from "./utils/dataloaders/createUserPostsLoader
 import { RecommenderResolver } from "./resolvers/recommender";
 import { Comment } from "./entities/Comment";
 import { createPostCommentsLoader } from "./utils/dataloaders/createPostCommentsLoader";
+import { CommentResolver } from "./resolvers/comment";
+// import { checkTelegramUsername } from "./utils/telegramUtils/checkTelegramUsername";
 
 const main = async () => {
+  // console.log(checkTelegramUsername("@vigneshsankr"))
   const conn = await createConnection({
     type: "postgres",
     url: process.env.DATABASE_URL,
@@ -153,7 +156,8 @@ const main = async () => {
         TaskResolver,
         TaskVolunteerResolver,
         TelegramResolver,
-        RecommenderResolver
+        RecommenderResolver,
+        CommentResolver
       ],
       validate: false,
     }),
