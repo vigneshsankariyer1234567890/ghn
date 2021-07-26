@@ -16,6 +16,7 @@ import { MyContext } from "../types";
 import { FieldError } from "./user";
 import { Usercategory } from "../entities/Usercategory";
 import { Charitycategory } from "../entities/Charitycategory";
+import { Userrole } from "../entities/Userrole";
 
 @InputType()
 class CategoryInput {
@@ -41,6 +42,11 @@ export class CategoryResolver {
         name: "ASC",
       },
     });
+  }
+
+  @Query(() => [Userrole])
+  async userroles(): Promise<Userrole[]> {
+    return Userrole.find({order: {id: "ASC"}});
   }
 
   @UseMiddleware(isAuth)

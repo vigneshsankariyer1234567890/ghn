@@ -516,7 +516,8 @@ export class UserResolver {
     }
 
     return {
-      success: true,
+      success: user.verified,
+      errors: user.verified ? undefined : [{field: "User", message: "User has to verify email address."}],
       user,
     };
   }

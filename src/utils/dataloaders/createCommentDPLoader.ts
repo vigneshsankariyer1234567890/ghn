@@ -2,10 +2,10 @@ import DataLoader from "dataloader";
 import { createQueryBuilder } from "typeorm";
 import { Comment } from "../../entities/Comment";
 import { User } from "../../entities/User";
-import { Userprofile } from "../../entities/Userprofile";
+// import { Userprofile } from "../../entities/Userprofile";
 
 export const createCommentDPLoader = () =>
-  new DataLoader<number, string|undefined>( async (commIds) => {
+  new DataLoader<number, User|undefined>( async (commIds) => {
       const comm = await createQueryBuilder()
         .select()
         .from(Comment, `co`)
@@ -15,20 +15,19 @@ export const createCommentDPLoader = () =>
       const uids = comm.map(c => c.authorId);
 
       const userdp = await createQueryBuilder()
-        .select(`up."userId", up."displayPicture"`)
+        .select(`u.*`)
         .from(User, `u`)
-        .innerJoin(Userprofile, `up`, `u.id = up."userId"`)
         .where(`u.id in (:...uids)`, {uids: uids})
-        .getRawMany<{userId: number, displayPicture?: string}>()
+        .getRawMany<User>()
     
-      const cidToDp: Record<number, string|undefined> = {};
+      const cidToDp: Record<number, User|undefined> = {};
 
       comm.forEach(co => {
-          const filtered = userdp.filter(u => u.userId === co.authorId);
+          const filtered = userdp.filter(u => u.id === co.authorId);
           if (filtered.length === 0) {
               cidToDp[co.id] = undefined;
           } else {
-              cidToDp[co.id] = filtered[0].displayPicture;
+              cidToDp[co.id] = filtered[0];
           }
       })
 

@@ -72,15 +72,15 @@ export class Event extends BaseEntity {
     @Column({type: "boolean", default:true})
     auditstat!: boolean
 
-    @Field(() => String, {nullable: true})
+    // @Field(() => String, {nullable: true})
     @Column({type: "text", nullable: true})
     telegramGroupId?: string
 
-    @Field(() => String, {nullable: true})
+    // @Field(() => String, {nullable: true})
     @Column({type: "text", nullable: true})
     telegramGroupHash?: string
 
-    @Field(() => String, {nullable: true})
+    // @Field(() => String, {nullable: true})
     @Column({type: "timestamptz", nullable: true})
     telegramGroupUpdatedDate?: Date;
 

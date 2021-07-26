@@ -92,17 +92,24 @@ export class EventvolunteerResolver {
 
     if (eventvolunteer.length > 0) {
       if (eventvolunteer.length === 1) {
-        let evo: Eventvolunteer = eventvolunteer[0];
+        const evo: Eventvolunteer = eventvolunteer[0];
+        if (evo.adminapproval === AdminApproval.APPROVED || evo.adminapproval === AdminApproval.REJECTED) {
+          return {
+            errors: [
+              {
+                field: "Approval status",
+                message: `You have already requested to become a volunteer. Your approval status is ${evo.adminapproval}.`,
+              },
+            ],
+            event: ev,
+            success: false,
+          };
+        }
+        await evo.remove();
         return {
-          errors: [
-            {
-              field: "Approval status",
-              message: `You have already requested to become a volunteer. Your approval status is ${evo.adminapproval}.`,
-            },
-          ],
-          event: ev,
-          success: false,
-        };
+          success: true,
+          event: ev
+        }
       }
       return {
         errors: [
@@ -524,6 +531,81 @@ export class EventvolunteerResolver {
     checkVolunteer.adminapproval = acceptVolunteer
       ? AdminApproval.APPROVED
       : AdminApproval.REJECTED;
+
+    checkVolunteer.save();
+
+    return { success: true };
+  }
+
+  @UseMiddleware(isAuth)
+  @Mutation(() => UpdateEventVolunteerResponse)
+  async removeEventVolunteer(
+    @Arg("eventId", () => Int) eventId: number,
+    @Arg("eventVolunteerUserId", () => Int) eventVolunteerUserId: number,
+    @Ctx() { req }: MyContext
+  ): Promise<UpdateEventVolunteerResponse> {
+    if (!req.session.userId) {
+      return {
+        success: false,
+        errors: [{ field: "User", message: "User is not authenticated." }],
+      };
+    }
+
+    if (!req.session.charityAdminIds) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
+
+    const ev = await Event.findOne({
+      where: { id: eventId, auditstat: true, completed: false },
+    });
+
+    if (!ev) {
+      return {
+        success: false,
+        errors: [{ field: "Event", message: "That event does not exist." }],
+      };
+    }
+
+    const adids = req.session.charityAdminIds.filter((i) => i === ev.charityId);
+
+    if (adids.length === 0) {
+      return {
+        errors: [
+          { field: "Charity", message: "User is not an admin of charity." },
+        ],
+        success: false,
+      };
+    }
+
+    const checkVolunteer = await Eventvolunteer.findOne({
+      where: {
+        eventId: eventId,
+        userId: eventVolunteerUserId,
+        adminapproval: 'accepted',
+        auditstat: true,
+        volunteeringCompleted: false,
+      },
+    });
+
+    if (!checkVolunteer) {
+      return {
+        success: false,
+        errors: [
+          {
+            field: "Event Volunteer",
+            message: "There is no such volunteer request.",
+          },
+        ],
+      };
+    }
+
+    checkVolunteer.adminapproval = AdminApproval.REJECTED;
+    checkVolunteer.auditstat = false;
 
     checkVolunteer.save();
 

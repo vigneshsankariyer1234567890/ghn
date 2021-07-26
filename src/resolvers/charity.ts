@@ -198,19 +198,19 @@ export class CharityResolver {
     //   };
     // }
 
-    const check = await Charity.findOne({ where: { uen: UENNumber } });
+    // const check = await Charity.findOne({ where: { uen: UENNumber } });
 
-    if (check) {
-      return {
-        errors: [
-          {
-            field: "uen",
-            message: "A charity with this UEN Number already exists.",
-          },
-        ],
-        success: false,
-      };
-    }
+    // if (check) {
+    //   return {
+    //     errors: [
+    //       {
+    //         field: "uen",
+    //         message: "A charity with this UEN Number already exists.",
+    //       },
+    //     ],
+    //     success: false,
+    //   };
+    // }
 
     let url =
       "https://data.gov.sg/api/action/datastore_search?resource_id=5ab68aac-91f6-4f39-9b21-698610bdf3f7&limit=5&q=";
@@ -307,7 +307,7 @@ export class CharityResolver {
         success: false,
         errors: [
           {
-            field: "postalcode",
+            field: "postalCode",
             message:
               "The postal code given does not match registered postal code.",
           },
@@ -315,7 +315,7 @@ export class CharityResolver {
       };
     }
 
-    const up = await Userprofile.findOne({where: { userId: req.session.id }});
+    const up = await Userprofile.findOne({where: { userId: req.session.userId }});
 
     if (!up) {
       return {

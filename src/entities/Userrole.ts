@@ -7,9 +7,11 @@ import { Eventvolunteer } from "./Eventvolunteer";
 @Entity()
 export class Userrole extends BaseEntity {
 
+    @Field()
     @PrimaryGeneratedColumn()
     id!: number
 
+    @Field()
     @Column()
     roleName!: string
 
