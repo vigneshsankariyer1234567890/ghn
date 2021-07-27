@@ -12,13 +12,7 @@ export const createEventLoader = () =>
       eventIdToEvent[e.id] = e;
     });
 
-    const sortedEvents = eventIds
-      .map((eventId) => eventIdToEvent[eventId])
-      .filter((ev) => ev.auditstat === true);
-    // console.log("userIds", userIds);
-    // console.log("map", userIdToUser);
-    // console.log("sortedUsers", sortedUsers);
-    return sortedEvents;
+    return eventIds.map(e => eventIdToEvent[e]);
   });
 
 export const createCEventsLoader = () =>

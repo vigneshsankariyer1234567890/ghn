@@ -53,7 +53,7 @@ import { EventvolunteerResolver } from "./resolvers/eventVolunteer";
 import { TaskResolver } from "./resolvers/task";
 import { TaskVolunteerResolver } from "./resolvers/taskVolunteer";
 import { createEventVolunteerLoader } from "./utils/dataloaders/createEventVolunteerLoader";
-import { createUserVolunteeredEventsListLoader } from "./utils/dataloaders/createEventVolunteerListLoader";
+import { createEventUnassignedVolunteerListLoader, createUserVolunteeredEventsListLoader } from "./utils/dataloaders/createEventVolunteerListLoader";
 import { createTaskListLoader } from "./utils/dataloaders/createTaskListLoader";
 import { createTaskVolunteerListLoader } from "./utils/dataloaders/createTaskVolunteerListLoader";
 import { Userfriend } from "./entities/Userfriend";
@@ -72,6 +72,9 @@ import { RecommenderResolver } from "./resolvers/recommender";
 import { Comment } from "./entities/Comment";
 import { createPostCommentsLoader } from "./utils/dataloaders/createPostCommentsLoader";
 import { CommentResolver } from "./resolvers/comment";
+import { createCommentDPLoader } from "./utils/dataloaders/createCommentDPLoader";
+import { createCommentPCLoader } from "./utils/dataloaders/createCommentPCLoader";
+import { SystemProcesses } from "./resolvers/system";
 // import { checkTelegramUsername } from "./utils/telegramUtils/checkTelegramUsername";
 
 const main = async () => {
@@ -107,6 +110,10 @@ const main = async () => {
   });
 
   await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
+
+  if (__prod__) {
+    await SystemProcesses.deleteUnverifiedUsers()
+  };
 
   const app = express();
 
@@ -189,7 +196,10 @@ const main = async () => {
       charityProfileLoader: createCharityProfileLoader(),
       userPostsLoader: createUserPostsLoader(),
       mutualFriendsLoader: createMutualFriendsLoader(),
-      postCommentsLoader: createPostCommentsLoader()
+      postCommentsLoader: createPostCommentsLoader(),
+      commentDpLoader: createCommentDPLoader(),
+      commentPCLoader: createCommentPCLoader(),
+      eventUnassignedVolunteerLoader: createEventUnassignedVolunteerListLoader()
     }),
     playground: true,
     introspection: true,

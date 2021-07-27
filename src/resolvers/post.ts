@@ -714,14 +714,17 @@ export async function deletePosts(postIds: number[]): Promise<void> {
     );
   });
 
-  await getConnection().transaction(async (tm) => {
-    await tm
-      .createQueryBuilder()
-      .delete()
-      .from(Like)
-      .where(`l."postId" in (:...posts)`, { posts: postIds })
-      .execute();
-  });
+  if (postIds.length >0 ) {
+    await getConnection().transaction(async (tm) => {
+      await tm
+        .createQueryBuilder()
+        .delete()
+        .from(Like)
+        .where(`"postId" in (:...posts)`, { posts: postIds })
+        .execute();
+    });
+  }
+  
 
   await getConnection().transaction(async (tm) => {
     tm.query(

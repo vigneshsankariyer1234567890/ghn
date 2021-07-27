@@ -200,6 +200,35 @@ export class EventResolver {
     return adids;
   }
 
+  @FieldResolver(() => [User], {nullable: true})
+  async unassignedVolunteers(
+    @Root() event: Event,
+    @Ctx() { req, userLoader, eventUnassignedVolunteerLoader }: MyContext
+  ): Promise<(User|Error)[] | undefined> {
+    if (!req.session.userId) {
+      return undefined;
+    }
+
+    if (!req.session.charityAdminIds) {
+      return undefined;
+    }
+
+    const valid = req.session.charityAdminIds.reduce((a,b) => a || b === event.charityId, false);
+
+    if (!valid) {
+      return undefined;
+    }
+
+    const uids = await eventUnassignedVolunteerLoader.load(event.id);
+
+    if (!uids) {
+      return undefined;
+    }
+
+    return await userLoader.loadMany(uids);
+
+  }
+
   @Mutation(() => EventLikeResponse)
   @UseMiddleware(isAuth)
   async likeEvent(
@@ -561,74 +590,40 @@ export class EventResolver {
 
     // if credentials are satisfied, mark event as deleted
     try {
-      await getConnection().transaction(async (tm) => {
-        tm.query(
-          `
-        update event 
-        set auditstat = false
-        where id = $1
-        `,
-          [id]
-        );
-      });
-
-      // mark Eventlikes as deleted
-
-      await getConnection().transaction(async (tm) => {
-        await tm
-          .createQueryBuilder()
-          .delete()
-          .from(Eventlike)
-          .where(`"eventId" :event`, { event: id })
-          .execute();
-      });
-
       // get list of posteventlinks which are about event
 
       const pels = await Posteventlink.find({ where: { eventId: id, auditstat:true } });
       const postkeys = pels.map((pe) => pe.postId);
-  
-
       // mark posts which are about event
       await deletePosts(postkeys);
-
-      // mark Eventvolunteers as deleted
-      await getConnection().transaction(async (tm) => {
-        tm.query(
-          `
-        update eventvolunteer 
-        set auditstat = false
-        where "eventId" = $1
-        `,
-          [id]
-        );
-      });
 
       // mark Tasks as deleted
       const tasks = await Task.find({
         where: { eventId: id, auditstat: true },
       });
-      const taskkeys = tasks.map((pe) => pe.eventId);
+      const taskkeys = tasks.map((pe) => pe.id);
 
       await getConnection().transaction(async (tm) => {
-        tm.query(
-          `
-        update task 
-        set auditstat = false
-        where "eventId" = $1
-        `,
+        await tm.query(
+          `update event set auditstat = false where id = $1`,
           [id]
         );
-      });
-
-      await getConnection().transaction(async (tm) => {
-        tm.query(
-          `
-        UPDATE taskvolunteer AS ev 
-        SET auditstat = false
-        FROM (select unnest(string_to_array($1,',')::int[]) as taskId ) AS tid
-        WHERE ev."taskId" = tid.taskId
-        `,
+        await tm.query(
+          `update eventvolunteer set auditstat = false where "eventId" = $1`,
+          [id]
+        );
+        await tm
+          .createQueryBuilder()
+          .delete()
+          .from(Eventlike)
+          .where(`"eventId" = :event`, { event: id })
+          .execute();
+        await tm.query(
+          `update task set auditstat = false where "eventId" = $1`,
+          [id]
+        );
+        await tm.query(
+          `UPDATE taskvolunteer AS ev SET auditstat = false FROM (select unnest(string_to_array($1,',')::int[]) as taskId ) AS tid WHERE ev."taskId" = tid.taskId`,
           [taskkeys.reduce<string>((a, b) => a + b + `,`, ``).slice(0, -1)]
         );
       });
@@ -639,7 +634,6 @@ export class EventResolver {
         success: false,
       };
     }
-
     // mark Taskvolunteers as deleted
     return { success: true };
   }

@@ -152,7 +152,7 @@ export class UserResolver {
   async likedEvents(
     @Root() user: User,
     @Ctx() { eventLoader, userEventLikesLoader }: MyContext
-  ): Promise<(Event | Error)[]> {
+  ): Promise<(Event | Error )[]> {
     const likedEvents = await userEventLikesLoader.load(user.id);
 
     if (!likedEvents) {
@@ -161,23 +161,23 @@ export class UserResolver {
 
     const eventIds = likedEvents.map((le) => le.eventId);
 
-    return await eventLoader.loadMany(eventIds);
+    return (await eventLoader.loadMany(eventIds)).filter(ev => ev instanceof Event ? ev.auditstat : ev.message !== "");
   }
 
-  @FieldResolver(() => [Event])
+  @FieldResolver(() => [Event], {nullable: true})
   async volunteeredEvents(
     @Root() user: User,
     @Ctx() { eventLoader, userVolunteeredEventsListLoader }: MyContext
-  ): Promise<(Event | Error)[]> {
+  ): Promise<(Event | Error )[]> {
     const likedEvents = await userVolunteeredEventsListLoader.load(user.id);
 
     if (!likedEvents) {
       return [];
     }
 
-    const eventIds = likedEvents.map((le) => le.eventId);
+    // const eventIds = likedEvents.map((le) => le.eventId);
 
-    return await eventLoader.loadMany(eventIds);
+    return (await eventLoader.loadMany(likedEvents)).filter(ev => ev instanceof Event ? ev.auditstat : ev.message !== "");
   }
 
   @FieldResolver(() => [User])
@@ -356,8 +356,8 @@ export class UserResolver {
             },
             {
               field: "email",
-              message: "Either username or email already taken"
-            }
+              message: "Either username or email already taken",
+            },
           ],
         };
       }
@@ -416,7 +416,7 @@ export class UserResolver {
         errors: [
           {
             field: "token",
-            message: "token expired",
+            message: "Token expired",
           },
         ],
       };
@@ -431,7 +431,7 @@ export class UserResolver {
         errors: [
           {
             field: "token",
-            message: "user no longer exists",
+            message: "User no longer exists",
           },
         ],
       };
@@ -467,9 +467,9 @@ export class UserResolver {
         success: false,
         errors: [
           {
-            field: "User",
+            field: "usernameOrEmail",
             message:
-              "You are already logged in. Please log out if you wish to log in as another user.",
+              "You are already logged in.",
           },
         ],
       };
@@ -485,7 +485,7 @@ export class UserResolver {
         errors: [
           {
             field: "usernameOrEmail",
-            message: "that username doesn't exist",
+            message: "That username doesn't exist",
           },
         ],
       };
@@ -497,9 +497,21 @@ export class UserResolver {
         errors: [
           {
             field: "password",
-            message: "incorrect password",
+            message: "Incorrect password",
           },
         ],
+      };
+    }
+
+    if (!user.verified) {
+      return {
+        success: false,
+        errors: [
+              {
+                field: "usernameOrEmail",
+                message: "Please complete the email verification.",
+              },
+            ]
       };
     }
 
@@ -516,9 +528,8 @@ export class UserResolver {
     }
 
     return {
-      success: user.verified,
-      errors: user.verified ? undefined : [{field: "User", message: "User has to verify email address."}],
-      user,
+      success: true,
+      user: user,
     };
   }
 
@@ -810,15 +821,18 @@ export class UserResolver {
     return { success: true, user };
   }
 
-  @Mutation(() => Boolean)
+  @Mutation(() => UserResponse)
   async forgotPassword(
     @Arg("email") email: string,
     @Ctx() { redis }: MyContext
-  ) {
+  ): Promise<UserResponse> {
     const user = await User.findOne({ where: { email } });
     if (!user) {
       // the email is not in the db
-      return true;
+      return {
+        success: false,
+        errors: [{field:"email", message: "Incorrect email"}]
+      };
     }
 
     const token = v4();
@@ -839,10 +853,15 @@ export class UserResolver {
         "Givehub password change request."
       );
     } catch (err) {
-      return true;
+      return {
+        success: false,
+        errors: [{field: "email", message: "Unable to send email"}]
+      };
     }
 
-    return true;
+    return {
+      success: true
+    };
   }
 
   @Query(() => EventTaskContainerResponse)

@@ -170,8 +170,17 @@ export class CharityResolver {
   async checkUENNumber(
     @Arg("UENNumber", () => String) UENNumber: string
   ): Promise<UENResponse> {
-    
-    const charityTypes: ReadonlyArray<string> = ["MQ", "MM", "CC", "CS", "MB", "MH", "SS", "PA", "PB"];
+    const charityTypes: ReadonlyArray<string> = [
+      "MQ",
+      "MM",
+      "CC",
+      "CS",
+      "MB",
+      "MH",
+      "SS",
+      "PA",
+      "PB",
+    ];
 
     if (UENNumber === "") {
       return {
@@ -222,7 +231,10 @@ export class CharityResolver {
       .then(
         (res) =>
           res.data.result.records.length === 1 &&
-          charityTypes.reduce((a,b) => a || b === res.data.result.records[0].entity_type, false)
+          charityTypes.reduce(
+            (a, b) => a || b === res.data.result.records[0].entity_type,
+            false
+          )
       );
 
     if (!res) {
@@ -282,9 +294,7 @@ export class CharityResolver {
     if (!uenresp.uendata) {
       return {
         success: false,
-        errors: [
-          { field: "uen", message: "UEN Validation was unsuccessful." },
-        ],
+        errors: [{ field: "uen", message: "UEN Validation was unsuccessful." }],
       };
     }
 
@@ -315,24 +325,34 @@ export class CharityResolver {
       };
     }
 
-    const up = await Userprofile.findOne({where: { userId: req.session.userId }});
+    const up = await Userprofile.findOne({
+      where: { userId: req.session.userId },
+    });
 
     if (!up) {
       return {
-        errors: [{ field: "User", message: 
-          `Your user details have not been updated. 
-          Please update your details before proceeding.` }],
+        errors: [
+          {
+            field: "User",
+            message: `Your user details have not been updated. 
+          Please update your details before proceeding.`,
+          },
+        ],
         success: false,
-      }
+      };
     }
 
     if (!up.telegramHandle) {
       return {
-        errors: [{ field: "User", message: 
-          `Your Telegram handle needs to be updated. 
-          Please update your Telegram handle before proceeding.` }],
+        errors: [
+          {
+            field: "User",
+            message: `Your Telegram handle needs to be updated. 
+          Please update your Telegram handle before proceeding.`,
+          },
+        ],
         success: false,
-      }
+      };
     }
 
     let charity;
@@ -453,12 +473,15 @@ export class CharityResolver {
     }
 
     if (options.categories) {
-      const resp = await CategoryResolver.updateCharityCategories({categories: options.categories}, charity.id);
+      const resp = await CategoryResolver.updateCharityCategories(
+        { categories: options.categories },
+        charity.id
+      );
       if (!resp.success) {
         return {
           success: false,
-          errors: resp.errors
-        }
+          errors: resp.errors,
+        };
       }
     }
 
@@ -486,21 +509,37 @@ export class CharityResolver {
         links: options.links,
         email: options.email,
         contactNumber: options.contactNumber,
-        displayPicture: options.displayPicture
+        displayPicture: options.displayPicture,
       }).save();
     } else {
-      const dp = !(charityprofs.displayPicture)
-      const newdp = !(options.displayPicture)
+      const dp = !charityprofs.displayPicture;
+      const newdp = !options.displayPicture;
       await getConnection().transaction(async (tm) => {
         await tm
           .createQueryBuilder()
           .update(Charityprofile)
           .set({
             about: options.about,
-            links: options.links,
-            email: options.email,
-            contactNumber: options.contactNumber,
-            displayPicture: dp ? options.displayPicture : newdp ? charityprofs.displayPicture : options.displayPicture
+            links: charityprofs.links
+              ? options.links
+                ? options.links
+                : charityprofs.links
+              : options.links,
+            email: charityprofs.email
+              ? options.email
+                ? options.email
+                : charityprofs.email
+              : options.email,
+            contactNumber: charityprofs.contactNumber
+              ? options.contactNumber
+                ? options.contactNumber
+                : charityprofs.contactNumber
+              : options.contactNumber,
+            displayPicture: dp
+              ? options.displayPicture
+              : newdp
+              ? charityprofs.displayPicture
+              : options.displayPicture,
           })
           .where(`"charityId" = :cid`, { cid: charity.id })
           .execute();

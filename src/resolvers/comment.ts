@@ -1,26 +1,25 @@
-import { FieldResolver, Resolver, Root } from "type-graphql";
+import { Ctx, FieldResolver, Resolver, Root } from "type-graphql";
 import { Comment } from "../entities/Comment";
 import { User } from "../entities/User";
-import { createCommentDPLoader } from "../utils/dataloaders/createCommentDPLoader";
-import { createCommentPCLoader } from "../utils/dataloaders/createCommentPCLoader";
+import { MyContext } from "../types";
+
 
 @Resolver(Comment)
 export class CommentResolver {
 
-    static dploader = createCommentDPLoader();
-    static parentCommentLoader = createCommentPCLoader();
-
     @FieldResolver(() => User, {nullable: true})
     async author(
-        @Root() comment: Comment
+        @Root() comment: Comment,
+        @Ctx() {commentDpLoader}: MyContext
     ): Promise<User | undefined> {
-        return await CommentResolver.dploader.load(comment.id);
+        return await commentDpLoader.load(comment.id);
     }
 
     @FieldResolver(() => Comment, {nullable: true})
     async parentComment(
-        @Root() comment: Comment
+        @Root() comment: Comment,
+        @Ctx() {commentPCLoader}: MyContext
     ): Promise<Comment | undefined> {
-        return await CommentResolver.parentCommentLoader.load(comment.id);
+        return await commentPCLoader.load(comment.id);
     }
 }

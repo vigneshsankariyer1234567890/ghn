@@ -109,7 +109,9 @@ export class TaskResolver {
       return false;
     }
 
-    const chid = await (await eventLoader.load(task.eventId)).charityId
+    const event = await eventLoader.load(task.eventId);
+
+    const chid = event.charityId
 
     const adids = req.session.charityAdminIds.reduce((a,b) => a || b === chid , false);
 

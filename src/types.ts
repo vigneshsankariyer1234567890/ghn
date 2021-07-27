@@ -31,9 +31,11 @@ import {
   createUserFriendshipLoader,
   createMutualFriendsLoader,
 } from "./utils/dataloaders/createUserFriendLoader";
-import {createUserVolunteeredEventsListLoader} from "./utils/dataloaders/createEventVolunteerListLoader"
+import {createEventUnassignedVolunteerListLoader, createUserVolunteeredEventsListLoader} from "./utils/dataloaders/createEventVolunteerListLoader"
 import { createUserPostsLoader } from "./utils/dataloaders/createUserPostsLoader";
 import { createPostCommentsLoader } from "./utils/dataloaders/createPostCommentsLoader";
+import { createCommentDPLoader } from "./utils/dataloaders/createCommentDPLoader";
+import { createCommentPCLoader } from "./utils/dataloaders/createCommentPCLoader";
 
 export type MyContext = {
   req: Request & {
@@ -67,4 +69,7 @@ export type MyContext = {
   userPostsLoader: ReturnType<typeof createUserPostsLoader>;
   mutualFriendsLoader: ReturnType<typeof createMutualFriendsLoader>;
   postCommentsLoader: ReturnType<typeof createPostCommentsLoader>;
+  commentDpLoader: ReturnType<typeof createCommentDPLoader>;
+  commentPCLoader: ReturnType<typeof createCommentPCLoader>;
+  eventUnassignedVolunteerLoader: ReturnType<typeof createEventUnassignedVolunteerListLoader>;
 };
