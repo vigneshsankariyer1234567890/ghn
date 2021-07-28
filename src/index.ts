@@ -75,6 +75,8 @@ import { CommentResolver } from "./resolvers/comment";
 import { createCommentDPLoader } from "./utils/dataloaders/createCommentDPLoader";
 import { createCommentPCLoader } from "./utils/dataloaders/createCommentPCLoader";
 import { SystemProcesses } from "./resolvers/system";
+import {CronJob} from "cron"
+
 // import { checkTelegramUsername } from "./utils/telegramUtils/checkTelegramUsername";
 
 const main = async () => {
@@ -111,9 +113,22 @@ const main = async () => {
 
   await conn.runMigrations(); // (from npx typeorm migration:generate -n MigrationName)
 
-  if (__prod__) {
-    await SystemProcesses.deleteUnverifiedUsers()
-  };
+  let cronJob: CronJob;
+
+  // removes unverified users
+  cronJob = new CronJob('0 0 0 * * *', async () => {
+    if (__prod__) {
+      try {
+        await SystemProcesses.deleteUnverifiedUsers();
+      } catch (e) {
+        console.log(e);
+      }
+    }
+  })
+
+  if (!cronJob.running) {
+    cronJob.start();
+  }
 
   const app = express();
 

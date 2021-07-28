@@ -798,6 +798,24 @@ export class CharityResolver {
         .execute();
     });
 
+    const evids = (await getConnection()
+      .createQueryBuilder()
+      .select(`e.id`)
+      .from(Event, `e`)
+      .where(`e.auditstat = true`)
+      .getRawMany<number>())
+      .reduce<string>((a, b) => a + b + `,`, ``)
+      .slice(0, -1);;
+    
+    await getConnection().transaction(async tm => {
+      await tm.query(`
+      insert into eventvolunteer 
+      ("eventId", "userId", adminapproval, "userroleId", "volunteeringCompleted", auditstat, "joinedTelegram")
+      SELECT eid, ${userId} as userId, 'approved' as adminapproval, 1 as userroleId, true as volunteeringCompleted, true as auditstat, false as joinedTelegram
+      FROM unnest(string_to_array( '${evids}', ',')::int[]) AS eid
+      `)
+    })
+    
     return { success: true };
   }
 

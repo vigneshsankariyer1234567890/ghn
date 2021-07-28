@@ -16,7 +16,7 @@ client = TelegramClient(StringSession(sessionStr), api_id, api_hash)
 channelname = sys.argv[1]
 about = sys.argv[2]
 ads = sys.argv[3]
-volunteers = sys.argv[4]
+volunt = sys.argv[4]
 charity_admins = []
 users = []
 
@@ -24,7 +24,7 @@ reader = csv.reader(ads.split(','))
 for row in reader:
     charity_admins.append(row[0])
 
-reader = csv.reader(volunteers.split(','))
+reader = csv.reader(volunt.split(','))
 for row in reader:
     users.append(row[0])
 
@@ -128,7 +128,7 @@ async def addCharityAdminsToGroup(api_id: str, api_hash: str, char_users: List[s
         })
 
 async def addVolunteersToGroup(api_id: str, api_hash: str, volunteers: List[str]):
-    if volunteers == "blank":
+    if volunt == "blank":
         return dict({
             "success": True,
             "api_id": api_id,
