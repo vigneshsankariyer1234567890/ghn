@@ -105,7 +105,7 @@ export class EventvolunteerResolver {
             success: false,
           };
         }
-        await evo.remove();
+        await Eventvolunteer.remove([evo]);
         return {
           success: true,
           event: ev

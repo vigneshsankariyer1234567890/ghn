@@ -334,12 +334,12 @@ export class EventResolver {
         on cat.id = cc."categoryId"
       ) ev
       where ev.auditstat = true
-      ${cursor ? `and ev."updatedAt" < $3` : ""}
+      ${cursor ? sortByUpcoming ? `and ev."dateStart" > $3` :`and ev."updatedAt" < $3` : ""}
       ${input ? `and ev.name ILIKE ` + `'` + input + `%` + `'` : ""}
       order by 
-        ${sortByUpcoming ? `ev."dateStart" DESC,` : ""}
+        ${sortByUpcoming ? `ev."dateStart" ASC,` : ""}
         ${sortByLikes ? `ev."likeNumber" DESC,` : ""} 
-        ev."dateStart" DESC
+        ev."updatedAt" DESC
       limit $1;
       `,
       replacements
@@ -422,6 +422,13 @@ export class EventResolver {
     }
 
     const char = charityId;
+
+    if (input.dateStart > input.dateEnd) {
+      return {
+        success: false,
+        errors:[{field: "dateStart", message:"Starting date is greater than ending date."}]
+      }
+    }
 
     // create event in db
     const event = await Event.create({

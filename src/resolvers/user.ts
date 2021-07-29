@@ -161,7 +161,7 @@ export class UserResolver {
 
     const eventIds = likedEvents.map((le) => le.eventId);
 
-    return (await eventLoader.loadMany(eventIds)).filter(ev => ev instanceof Event ? ev.auditstat : ev.message !== "");
+    return await eventLoader.loadMany(eventIds);// .filter(ev => ev instanceof Event ? ev.auditstat : ev.message !== "");
   }
 
   @FieldResolver(() => [Event], {nullable: true})
@@ -969,6 +969,8 @@ export class UserResolver {
       };
     }
 
+    const ownId = req.session.userId;
+
     if (req.session.userId === userId) {
       return {
         success: false,
@@ -981,30 +983,32 @@ export class UserResolver {
       };
     }
 
-    const bigger = userId > req.session.userId;
+    // const bigger = userId > req.session.userId;
 
-    const userfriend = await Userfriend.findOne({
-      where: {
-        user1Id: bigger ? req.session.userId : userId,
-        user2Id: bigger ? userId : req.session.userId,
-      },
-    });
+    const userfriend = await getConnection()
+      .createQueryBuilder()
+      .select(`uf.*`)
+      .from(Userfriend, `uf`)
+      .where(`(uf."user1Id" = ${ownId} and uf."user2Id" = ${userId}) or (uf."user1Id" = ${userId} and uf."user2Id" = ${ownId})`)
+      .getRawMany<Userfriend>()
 
-    if (userfriend) {
+    if (userfriend.length>0) {
+      const uf = userfriend[0];
       if (
-        userfriend.friendreqstatus === FriendRequestStatus.ACCEPTED ||
-        userfriend.friendreqstatus === FriendRequestStatus.USER1_REQ ||
-        userfriend.friendreqstatus === FriendRequestStatus.USER2_REQ
+        uf.friendreqstatus === FriendRequestStatus.ACCEPTED ||
+        uf.friendreqstatus === FriendRequestStatus.USER1_REQ ||
+        uf.friendreqstatus === FriendRequestStatus.USER2_REQ
       ) {
-        await userfriend.remove();
+        await Userfriend.remove([uf]);
         return {
           success: true,
+          user: await User.findOne({where: {id: userId}})
         };
       }
 
       if (
-        userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER1 ||
-        userfriend.friendreqstatus === FriendRequestStatus.BLOCKED_USER2
+        uf.friendreqstatus === FriendRequestStatus.BLOCKED_USER1 ||
+        uf.friendreqstatus === FriendRequestStatus.BLOCKED_USER2
       ) {
         return {
           success: false,
@@ -1017,8 +1021,8 @@ export class UserResolver {
         };
       }
 
-      if (userfriend.friendreqstatus === FriendRequestStatus.REJECTED) {
-        await userfriend.remove();
+      if (uf.friendreqstatus === FriendRequestStatus.REJECTED) {
+        await Userfriend.remove([uf]);
       }
     }
 
@@ -1028,16 +1032,16 @@ export class UserResolver {
         .insert()
         .into(Userfriend)
         .values({
-          user1Id: bigger ? req.session.userId : userId,
-          user2Id: bigger ? userId : req.session.userId,
-          friendreqstatus: bigger
-            ? FriendRequestStatus.USER1_REQ
-            : FriendRequestStatus.USER2_REQ,
+          user1Id: ownId > userId ? userId : ownId,
+          user2Id: ownId > userId ? ownId : userId,
+          friendreqstatus: ownId > userId 
+            ? FriendRequestStatus.USER2_REQ
+            : FriendRequestStatus.USER1_REQ,
         })
         .execute();
     });
 
-    return { success: true };
+    return { success: true, user: await User.findOne({where: {id: userId}}) };
   }
 
   @Mutation(() => UserResponse)

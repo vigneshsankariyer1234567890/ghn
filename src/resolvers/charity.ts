@@ -24,7 +24,7 @@ import { Category } from "../entities/Category";
 // import { Charitycategory } from "../entities/Charitycategory";
 import { Charityfollow } from "../entities/Charityfollow";
 import { Event } from "../entities/Event";
-import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
+// import { FriendRequestStatus, Userfriend } from "../entities/Userfriend";
 // import { Charitycategory } from "../entities/Charitycategory";
 import { PaginatedCharities } from "../utils/cardContainers/PaginatedCharitiesAndUsers";
 import {
@@ -180,6 +180,8 @@ export class CharityResolver {
       "SS",
       "PA",
       "PB",
+      "VH",
+      "GS"
     ];
 
     if (UENNumber === "") {
@@ -742,27 +744,27 @@ export class CharityResolver {
       };
     }
 
-    const bigger = userId > req.session.userId;
+    // const bigger = userId > req.session.userId;
 
-    const userfriend = await Userfriend.findOne({
-      where: {
-        user1Id: bigger ? req.session.userId : userId,
-        user2Id: bigger ? userId : req.session.userId,
-        friendreqstatus: FriendRequestStatus.ACCEPTED,
-      },
-    });
+    // const userfriend = await Userfriend.findOne({
+    //   where: {
+    //     user1Id: bigger ? req.session.userId : userId,
+    //     user2Id: bigger ? userId : req.session.userId,
+    //     friendreqstatus: FriendRequestStatus.ACCEPTED,
+    //   },
+    // });
 
-    if (!userfriend) {
-      return {
-        errors: [
-          {
-            field: "Charity",
-            message: `You have to be friends with the user before being able to add as admin.`,
-          },
-        ],
-        success: false,
-      };
-    }
+    // if (!userfriend) {
+    //   return {
+    //     errors: [
+    //       {
+    //         field: "Charity",
+    //         message: `You have to be friends with the user before being able to add as admin.`,
+    //       },
+    //     ],
+    //     success: false,
+    //   };
+    // }
 
     const checkUserIsAdmin = await Charityrolelink.findOne({
       where: {
@@ -815,7 +817,7 @@ export class CharityResolver {
       FROM unnest(string_to_array( '${evids}', ',')::int[]) AS eid
       `)
     })
-    
+
     return { success: true };
   }
 
