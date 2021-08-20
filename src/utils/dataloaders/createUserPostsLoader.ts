@@ -20,9 +20,14 @@ export const createUserPostsLoader = () =>
 
     const uidToEposts: Record<number, EPost[]> = {};
 
-    userIds.forEach(async (k) => {
-      uidToEposts[k] = await PaginatedPosts.convertPostsToEPosts(uidToPosts[k]);
-    });
+    // for (const k of userIds) {
+    //   uidToEposts[k] = await PaginatedPosts.convertPostsToEPosts(uidToPosts[k]);
+    // } // synchronuous call
+
+    await Promise.all(userIds.map(async (k) => {
+      const content = await PaginatedPosts.convertPostsToEPosts(uidToPosts[k]);
+      uidToEposts[k] = content;
+    })) // asynchronuous call
 
     return userIds.map((k) => uidToEposts[k]);
   });
